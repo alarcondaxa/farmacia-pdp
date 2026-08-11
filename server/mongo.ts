@@ -78,6 +78,7 @@ export async function ensureIndexes(): Promise<void> {
     db.collection("settings").createIndex({ settingKey: 1 }, { unique: true }),
     db.collection("stock").createIndex({ dosage: 1 }, { unique: true }),
     db.collection("clicks").createIndex({ elementId: 1 }),
+    db.collection("clicks").createIndex({ pageUrl: 1, elementId: 1, createdAt: -1 }),
     db.collection("clicks").createIndex({ createdAt: -1 }),
   ]);
 }

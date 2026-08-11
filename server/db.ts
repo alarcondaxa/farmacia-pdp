@@ -448,36 +448,71 @@ export async function recordClick(data: {
 }
 
 /**
- * Retorna o total de cliques agrupados por elemento.
- * Útil para o dashboard administrativo.
+ * Retorna o funil de cliques da loja, com totais por página e por elemento.
+ * O `pageUrl` é gravado em cada evento para que o painel mostre exatamente
+ * onde o cliente clicou, e não apenas o botão que recebeu o clique.
  */
 export async function getClickStats() {
   const db = await getMongo();
-  if (!db) return [];
+  if (!db) return { totalClicks: 0, pages: [], elements: [] };
 
-  const rows = await db
+  const [result] = await db
     .collection("clicks")
     .aggregate([
       {
-        $group: {
-          _id: "$elementId",
-          total: { $sum: 1 },
-          lastClick: { $max: "$createdAt" },
-        },
-      },
-      { $sort: { total: -1 } },
-      {
-        $project: {
-          _id: 0,
-          elementId: "$_id",
-          total: 1,
-          lastClick: 1,
+        $facet: {
+          pages: [
+            {
+              $group: {
+                _id: "$pageUrl",
+                total: { $sum: 1 },
+                elementIds: { $addToSet: "$elementId" },
+                lastClick: { $max: "$createdAt" },
+              },
+            },
+            { $sort: { total: -1, lastClick: -1 } },
+            {
+              $project: {
+                _id: 0,
+                pageUrl: "$_id",
+                total: 1,
+                uniqueElements: { $size: "$elementIds" },
+                lastClick: 1,
+              },
+            },
+          ],
+          elements: [
+            {
+              $group: {
+                _id: { pageUrl: "$pageUrl", elementId: "$elementId" },
+                elementText: { $max: "$elementText" },
+                total: { $sum: 1 },
+                lastClick: { $max: "$createdAt" },
+              },
+            },
+            { $sort: { total: -1, lastClick: -1 } },
+            {
+              $project: {
+                _id: 0,
+                pageUrl: "$_id.pageUrl",
+                elementId: "$_id.elementId",
+                elementText: 1,
+                total: 1,
+                lastClick: 1,
+              },
+            },
+          ],
+          summary: [{ $count: "totalClicks" }],
         },
       },
     ])
     .toArray();
 
-  return rows as Array<{ elementId: string; total: number; lastClick: Date }>;
+  return {
+    totalClicks: result?.summary?.[0]?.totalClicks ?? 0,
+    pages: result?.pages ?? [],
+    elements: result?.elements ?? [],
+  };
 }
 
 /* ------------------------------------------------------------------ */

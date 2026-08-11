@@ -338,26 +338,60 @@ async function recordClick(data) {
 }
 async function getClickStats() {
   const db = await getMongo();
-  if (!db) return [];
-  const rows = await db.collection("clicks").aggregate([
+  if (!db) return { totalClicks: 0, pages: [], elements: [] };
+  const [result] = await db.collection("clicks").aggregate([
     {
-      $group: {
-        _id: "$elementId",
-        total: { $sum: 1 },
-        lastClick: { $max: "$createdAt" }
-      }
-    },
-    { $sort: { total: -1 } },
-    {
-      $project: {
-        _id: 0,
-        elementId: "$_id",
-        total: 1,
-        lastClick: 1
+      $facet: {
+        pages: [
+          {
+            $group: {
+              _id: "$pageUrl",
+              total: { $sum: 1 },
+              elementIds: { $addToSet: "$elementId" },
+              lastClick: { $max: "$createdAt" }
+            }
+          },
+          { $sort: { total: -1, lastClick: -1 } },
+          {
+            $project: {
+              _id: 0,
+              pageUrl: "$_id",
+              total: 1,
+              uniqueElements: { $size: "$elementIds" },
+              lastClick: 1
+            }
+          }
+        ],
+        elements: [
+          {
+            $group: {
+              _id: { pageUrl: "$pageUrl", elementId: "$elementId" },
+              elementText: { $max: "$elementText" },
+              total: { $sum: 1 },
+              lastClick: { $max: "$createdAt" }
+            }
+          },
+          { $sort: { total: -1, lastClick: -1 } },
+          {
+            $project: {
+              _id: 0,
+              pageUrl: "$_id.pageUrl",
+              elementId: "$_id.elementId",
+              elementText: 1,
+              total: 1,
+              lastClick: 1
+            }
+          }
+        ],
+        summary: [{ $count: "totalClicks" }]
       }
     }
   ]).toArray();
-  return rows;
+  return {
+    totalClicks: result?.summary?.[0]?.totalClicks ?? 0,
+    pages: result?.pages ?? [],
+    elements: result?.elements ?? []
+  };
 }
 async function countOrdersByIp(clientIp, windowHours) {
   const db = await getMongo();

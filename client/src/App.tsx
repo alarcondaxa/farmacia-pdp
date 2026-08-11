@@ -9,6 +9,7 @@ import { CartProvider } from "./contexts/CartContext";
 import { LocationProvider } from "./contexts/LocationContext";
 import CepGate from "./components/CepGate";
 import TrackingLoader from "./components/TrackingLoader";
+import { GlobalClickTracking } from "./hooks/useClickTracking";
 import Home from "./pages/Home";
 import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
@@ -48,6 +49,7 @@ function App() {
             <CartProvider>
               <ScrollToTop />
               <TrackingLoader />
+              <GlobalClickTracking />
               <Toaster />
               <CepGate />
               <Router />

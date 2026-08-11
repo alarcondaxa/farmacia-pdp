@@ -85,8 +85,34 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
   );
 }
 
+function pageLabel(pageUrl: string) {
+  const path = pageUrl.startsWith("http")
+    ? (() => {
+        try {
+          return new URL(pageUrl).pathname;
+        } catch {
+          return pageUrl;
+        }
+      })()
+    : pageUrl;
+
+  const labels: Record<string, string> = {
+    "/": "Página do produto",
+    "/carrinho": "Carrinho",
+    "/checkout": "Checkout",
+    "/pedido-confirmado": "Pedido confirmado",
+    "/admin": "Painel administrativo",
+    "/404": "Página não encontrada",
+  };
+
+  return labels[path] ?? path;
+}
+
 function ClickStatsCard() {
-  const statsQuery = trpc.store.admin.clickStats.useQuery();
+  const statsQuery = trpc.store.admin.clickStats.useQuery(undefined, {
+    refetchInterval: 15000,
+  });
+  const [selectedPage, setSelectedPage] = useState("__all__");
 
   if (statsQuery.isLoading) {
     return (
@@ -96,45 +122,127 @@ function ClickStatsCard() {
     );
   }
 
-  const stats = statsQuery.data || [];
+  const stats = statsQuery.data;
+  const pages = stats?.pages ?? [];
+  const elements = (stats?.elements ?? []).filter(
+    (row) => selectedPage === "__all__" || row.pageUrl === selectedPage,
+  );
 
   return (
     <section className="rounded-2xl bg-white p-5 lg:p-6">
-      <div className="flex items-center gap-2">
-        <LineChart size={18} className="text-rd-action" />
-        <h2 className="text-[16px] font-bold text-rd-ink">Cliques dos Clientes</h2>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <LineChart size={18} className="text-rd-action" />
+            <h2 className="text-[16px] font-bold text-rd-ink">Cliques dos Clientes</h2>
+          </div>
+          <p className="mt-1 text-[13px] text-rd-body">
+            Acompanhe todos os cliques do site, organizados por página e ação.
+          </p>
+        </div>
+        <div className="rounded-xl bg-rd-pink px-4 py-2 text-right">
+          <span className="block text-[11px] font-semibold uppercase tracking-wide text-rd-body">
+            Cliques registrados
+          </span>
+          <strong className="text-[22px] leading-none text-rd-dark">
+            {stats?.totalClicks ?? 0}
+          </strong>
+        </div>
       </div>
-      <p className="mt-1 text-[13px] text-rd-body">
-        Saiba quais botões e links estão sendo mais acessados pelos seus clientes.
-      </p>
 
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-rd-line bg-rd-bg p-3">
+          <span className="block text-[11px] font-semibold uppercase tracking-wide text-rd-mute">
+            Páginas acessadas
+          </span>
+          <strong className="mt-1 block text-[20px] text-rd-ink">{pages.length}</strong>
+        </div>
+        <div className="rounded-xl border border-rd-line bg-rd-bg p-3 sm:col-span-2">
+          <label className="block text-[11px] font-semibold uppercase tracking-wide text-rd-mute">
+            Ver detalhes da página
+          </label>
+          <select
+            value={selectedPage}
+            onChange={(event) => setSelectedPage(event.target.value)}
+            className="mt-1 w-full bg-transparent text-[14px] font-semibold text-rd-ink outline-none">
+            <option value="__all__">Todas as páginas</option>
+            {pages.map((page) => (
+              <option key={page.pageUrl} value={page.pageUrl}>
+                {pageLabel(page.pageUrl)} — {page.total} clique{page.total === 1 ? "" : "s"}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-5 overflow-x-auto">
+        <h3 className="mb-2 text-[13px] font-bold text-rd-ink">Resumo por página</h3>
         <table className="w-full text-left text-[13px]">
           <thead>
             <tr className="border-b border-rd-line text-rd-mute">
-              <th className="pb-2 font-semibold">Elemento</th>
-              <th className="pb-2 font-semibold">Total de Cliques</th>
-              <th className="pb-2 font-semibold text-right">Último clique</th>
+              <th className="pb-2 font-semibold">Página</th>
+              <th className="pb-2 font-semibold">Cliques</th>
+              <th className="pb-2 font-semibold">Ações diferentes</th>
+              <th className="pb-2 text-right font-semibold">Último clique</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-rd-line">
-            {stats.length === 0 ? (
+            {pages.length === 0 ? (
               <tr>
-                <td colSpan={3} className="py-4 text-center text-rd-mute">
+                <td colSpan={4} className="py-4 text-center text-rd-mute">
                   Nenhum clique registrado ainda.
                 </td>
               </tr>
             ) : (
-              stats.map((row) => (
-                <tr key={row.elementId}>
-                  <td className="py-3 font-medium text-rd-ink">{row.elementId}</td>
+              pages.map((page) => (
+                <tr key={page.pageUrl}>
+                  <td className="py-3 font-medium text-rd-ink">{pageLabel(page.pageUrl)}</td>
+                  <td className="py-3 font-bold text-rd-dark">{page.total}</td>
+                  <td className="py-3 text-rd-body">{page.uniqueElements}</td>
+                  <td className="py-3 text-right text-rd-mute">
+                    {new Date(page.lastClick).toLocaleString("pt-BR")}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-6 overflow-x-auto">
+        <h3 className="mb-2 text-[13px] font-bold text-rd-ink">
+          Elementos mais clicados{selectedPage === "__all__" ? "" : ` em ${pageLabel(selectedPage)}`}
+        </h3>
+        <table className="w-full text-left text-[13px]">
+          <thead>
+            <tr className="border-b border-rd-line text-rd-mute">
+              <th className="pb-2 font-semibold">Elemento</th>
+              <th className="pb-2 font-semibold">Página</th>
+              <th className="pb-2 font-semibold">Cliques</th>
+              <th className="pb-2 text-right font-semibold">Último clique</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-rd-line">
+            {elements.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-4 text-center text-rd-mute">
+                  Nenhum clique encontrado para este filtro.
+                </td>
+              </tr>
+            ) : (
+              elements.slice(0, 50).map((row) => (
+                <tr key={`${row.pageUrl}-${row.elementId}`}>
+                  <td className="py-3 font-medium text-rd-ink">
+                    {row.elementText || row.elementId}
+                  </td>
+                  <td className="py-3 text-rd-body">{pageLabel(row.pageUrl)}</td>
                   <td className="py-3">
                     <span className="rounded-full bg-rd-pink px-2 py-0.5 font-bold text-rd-dark">
                       {row.total}
                     </span>
                   </td>
                   <td className="py-3 text-right text-rd-mute">
-                    {new Date(row.lastClick).toLocaleString('pt-BR')}
+                    {new Date(row.lastClick).toLocaleString("pt-BR")}
                   </td>
                 </tr>
               ))
