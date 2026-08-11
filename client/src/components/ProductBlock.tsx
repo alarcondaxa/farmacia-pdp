@@ -29,6 +29,7 @@ import { useLocation } from "wouter";
 import { product } from "@/data/product";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerLocation } from "@/contexts/LocationContext";
+import { useClickTracking } from "@/hooks/useClickTracking";
 import { trpc } from "@/lib/trpc";
 import { trackEvent } from "@/lib/tracking";
 import {
@@ -80,6 +81,7 @@ export default function ProductBlock() {
     useCustomerLocation();
   const regionSuffix = regionLabel ? ` perto de você em ${regionLabel}` : "";
   const [, navigate] = useLocation();
+  const { trackClick } = useClickTracking();
 
   // Disponibilidade real vinda do servidor: é o mesmo número que o checkout
   // valida na hora de criar o pedido.
@@ -243,7 +245,10 @@ export default function ProductBlock() {
             {product.dosageOptions.map((d) => (
               <button
                 key={d}
-                onClick={() => setDosage(d)}
+                onClick={() => {
+                  setDosage(d);
+                  trackClick(`thumb-dosage-${d}`, d);
+                }}
                 title={`Ver embalagem ${d}`}
                 className={`rd-press h-16 w-16 shrink-0 overflow-hidden rounded-xl border bg-white p-1 ${
                   d === dosage ? "border-rd-action" : "border-rd-line2"
@@ -312,7 +317,10 @@ export default function ProductBlock() {
                 return (
                   <button
                     key={d}
-                    onClick={() => setDosage(d)}
+                    onClick={() => {
+                      setDosage(d);
+                      trackClick(`select-dosage-${d}`, d);
+                    }}
                     className={`rd-press relative flex flex-col items-center rounded-xl border px-3 py-1.5 text-[13px] font-semibold transition-colors ${
                       d === dosage
                         ? "border-rd-action bg-rd-pink text-rd-dark"
@@ -350,7 +358,10 @@ export default function ProductBlock() {
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-1 rounded-full border border-rd-line2 p-1">
                 <button
-                  onClick={() => setQty((q) => Math.max(1, q - 1))}
+                  onClick={() => {
+                    setQty((q) => Math.max(1, q - 1));
+                    trackClick("qty-minus", "Diminuir");
+                  }}
                   disabled={qty <= 1}
                   aria-label="Diminuir quantidade"
                   className="rd-press rounded-full p-2 text-rd-action hover:bg-rd-pink disabled:cursor-not-allowed disabled:text-rd-line2 disabled:hover:bg-transparent">
@@ -360,7 +371,10 @@ export default function ProductBlock() {
                   {qty}
                 </span>
                 <button
-                  onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+                  onClick={() => {
+                    setQty((q) => Math.min(maxQty, q + 1));
+                    trackClick("qty-plus", "Aumentar");
+                  }}
                   disabled={qty >= maxQty}
                   aria-label="Aumentar quantidade"
                   className="rd-press rounded-full p-2 text-rd-action hover:bg-rd-pink disabled:cursor-not-allowed disabled:text-rd-line2 disabled:hover:bg-transparent">
@@ -391,7 +405,10 @@ export default function ProductBlock() {
             )}
             {qty === 1 && maxQty >= 2 && (
               <button
-                onClick={() => setQty(2)}
+                onClick={() => {
+                  setQty(2);
+                  trackClick("promo-bundle-click", "Leve 2 unidades");
+                }}
                 className="rd-press mt-3 flex w-full items-center gap-2 rounded-xl border border-dashed border-rd-action bg-rd-pink/50 px-3 py-2.5 text-left sm:w-auto">
                 <Plus size={15} className="shrink-0 text-rd-action" />
                 <span className="text-[12.5px] leading-tight text-rd-dark">
@@ -424,11 +441,13 @@ export default function ProductBlock() {
           <div className="flex gap-3">
             <a
               href="#descricao"
+              onClick={() => trackClick("link-description", "Descrição completa")}
               className="rd-press rounded-full border border-rd-line2 px-4 py-2 text-[13px] font-semibold text-rd-body hover:bg-rd-pink hover:text-rd-dark">
               Descrição completa
             </a>
             <a
               href="#bula"
+              onClick={() => trackClick("link-bula", "Bula")}
               className="rd-press rounded-full border border-rd-line2 px-4 py-2 text-[13px] font-semibold text-rd-body hover:bg-rd-pink hover:text-rd-dark">
               Bula
             </a>
@@ -505,13 +524,19 @@ export default function ProductBlock() {
           </p>
 
           <button
-            onClick={() => addToCart(true)}
+            onClick={() => {
+              addToCart(true);
+              trackClick("buy-now-sidebar", `Comprar agora: ${dosage} x ${qty}`);
+            }}
             disabled={soldOut}
             className="rd-press mt-4 w-full rounded-full bg-rd-action py-3.5 text-[16px] font-extrabold text-white shadow-lg shadow-rd-action/25 hover:bg-rd-dark disabled:cursor-not-allowed disabled:bg-rd-mute disabled:shadow-none">
             {soldOut ? "Dosagem esgotada" : "Comprar agora"}
           </button>
           <button
-            onClick={() => addToCart(false)}
+            onClick={() => {
+              addToCart(false);
+              trackClick("add-to-cart-sidebar", `Adicionar ao carrinho: ${dosage} x ${qty}`);
+            }}
             disabled={soldOut || cartFull}
             className="rd-press mt-2 w-full rounded-full border border-rd-action py-3 text-[15px] font-bold text-rd-action hover:bg-rd-pink disabled:cursor-not-allowed disabled:border-rd-line2 disabled:text-rd-mute disabled:hover:bg-transparent">
             {cartFull && !soldOut
@@ -576,7 +601,10 @@ export default function ProductBlock() {
           </p>
         </div>
         <button
-          onClick={() => addToCart(true)}
+          onClick={() => {
+            addToCart(true);
+            trackClick("buy-now-mobile", `Comprar mobile: ${dosage} x ${qty}`);
+          }}
           disabled={soldOut}
           className="rd-press shrink-0 rounded-full bg-rd-action px-6 py-2.5 text-[14px] font-extrabold text-white disabled:cursor-not-allowed disabled:bg-rd-mute">
           {soldOut ? "Esgotado" : "Comprar"}

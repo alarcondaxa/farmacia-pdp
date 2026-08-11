@@ -20,6 +20,7 @@ import Logo from "./Logo";
 import { categories } from "@/data/catalog";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerLocation } from "@/contexts/LocationContext";
+import { useClickTracking } from "@/hooks/useClickTracking";
 import { trpc } from "@/lib/trpc";
 
 const demo = () =>
@@ -101,6 +102,7 @@ export default function Header() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { count } = useCart();
   const [, navigate] = useLocation();
+  const { trackClick } = useClickTracking();
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -118,6 +120,7 @@ export default function Header() {
       <header className="mx-auto flex w-full max-w-[1366px] items-center gap-4 px-4 py-3 lg:px-6">
         <a
           href="/"
+          onClick={() => trackClick("header-logo", "Logo Drogasil")}
           aria-label="Ir para a página inicial da Drogasil"
           className="shrink-0">
           <Logo className="h-9 w-[112px] lg:h-12 lg:w-[149px]" />
@@ -126,6 +129,7 @@ export default function Header() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            trackClick("header-search", "Busca");
             demo();
           }}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-full border border-rd-line2 bg-white px-4 py-2 transition-colors focus-within:border-rd-action">
@@ -149,7 +153,10 @@ export default function Header() {
             top="Acompanhar"
             bottom="pedidos" />
           <button
-            onClick={() => navigate("/carrinho")}
+            onClick={() => {
+              navigate("/carrinho");
+              trackClick("header-cart", "Carrinho");
+            }}
             aria-label="Carrinho"
             className="rd-press relative rounded-full bg-rd-action p-2.5 text-white hover:bg-rd-dark">
             <ShoppingCart size={20} />
@@ -187,7 +194,10 @@ export default function Header() {
                   inputMode="numeric"
                   className="w-full rounded-xl border border-rd-line2 px-3 py-2 text-[14px] outline-none focus:border-rd-action" />
                 <button
-                  onClick={confirmCep}
+                  onClick={() => {
+                    confirmCep();
+                    trackClick("header-cep-confirm", "Confirmar CEP");
+                  }}
                   disabled={cepLookup.isFetching}
                   className="rd-press mt-3 w-full rounded-full bg-rd-action py-2 text-[14px] font-bold text-white hover:bg-rd-dark disabled:opacity-70">
                   {cepLookup.isFetching ? "Consultando..." : "Confirmar"}

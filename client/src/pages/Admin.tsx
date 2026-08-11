@@ -85,6 +85,67 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
   );
 }
 
+function ClickStatsCard() {
+  const statsQuery = trpc.store.admin.clickStats.useQuery();
+
+  if (statsQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 size={24} className="animate-spin text-rd-action" />
+      </div>
+    );
+  }
+
+  const stats = statsQuery.data || [];
+
+  return (
+    <section className="rounded-2xl bg-white p-5 lg:p-6">
+      <div className="flex items-center gap-2">
+        <LineChart size={18} className="text-rd-action" />
+        <h2 className="text-[16px] font-bold text-rd-ink">Cliques dos Clientes</h2>
+      </div>
+      <p className="mt-1 text-[13px] text-rd-body">
+        Saiba quais botões e links estão sendo mais acessados pelos seus clientes.
+      </p>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-left text-[13px]">
+          <thead>
+            <tr className="border-b border-rd-line text-rd-mute">
+              <th className="pb-2 font-semibold">Elemento</th>
+              <th className="pb-2 font-semibold">Total de Cliques</th>
+              <th className="pb-2 font-semibold text-right">Último clique</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-rd-line">
+            {stats.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="py-4 text-center text-rd-mute">
+                  Nenhum clique registrado ainda.
+                </td>
+              </tr>
+            ) : (
+              stats.map((row) => (
+                <tr key={row.elementId}>
+                  <td className="py-3 font-medium text-rd-ink">{row.elementId}</td>
+                  <td className="py-3">
+                    <span className="rounded-full bg-rd-pink px-2 py-0.5 font-bold text-rd-dark">
+                      {row.total}
+                    </span>
+                  </td>
+                  <td className="py-3 text-right text-rd-mute">
+                    {new Date(row.lastClick).toLocaleString('pt-BR')}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function PixSettingsCard() {
   const utils = trpc.useUtils();
   const settingsQuery = trpc.store.admin.settings.useQuery();
@@ -1024,6 +1085,7 @@ export default function Admin() {
       </header>
 
       <main className="mx-auto flex w-full max-w-[1366px] flex-col gap-6 px-4 py-6 lg:px-6">
+        <ClickStatsCard />
         <PixSettingsCard />
         <StockCard />
         <OrdersTable />

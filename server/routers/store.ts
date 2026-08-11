@@ -8,6 +8,7 @@ import {
   createOrder,
   decrementStock,
   deleteOrder,
+  getClickStats,
   getNextOrderSequence,
   getOrderById,
   getOrderByReference,
@@ -16,6 +17,7 @@ import {
   listStock,
   markCapiSent,
   markChargeSent,
+  recordClick,
   restoreStock,
   saveSettings,
   setOrderPixPayload,
@@ -287,6 +289,23 @@ export const storeRouter = router({
       })),
     };
   }),
+
+  /** Registra um clique vindo do frontend. Procedimento público. */
+  trackClick: publicProcedure
+    .input(
+      z.object({
+        elementId: z.string().max(128),
+        elementText: z.string().max(500).optional(),
+        pageUrl: z.string().max(500),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      await recordClick({
+        ...input,
+        clientIp: ctx.req.ip,
+      });
+      return { success: true };
+    }),
 
   /** Registra o pedido e devolve o Pix copia-e-cola quando aplicável. */
   createOrder: publicProcedure
@@ -642,6 +661,11 @@ export const storeRouter = router({
     }),
 
   admin: router({
+    /** Estatísticas de cliques para o dashboard. */
+    clickStats: adminProcedure.query(async () => {
+      return getClickStats();
+    }),
+
     /** Lista completa de pedidos com todos os dados informados pelo cliente. */
     orders: adminProcedure.query(async () => {
       const rows = await listOrders();

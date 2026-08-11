@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertOrder,
   InsertUser,
+  clicks,
   orders,
   settings,
   stock,
@@ -387,6 +388,47 @@ export async function restoreStock(dosage: string, quantity: number) {
       available: sql`LEAST(${stock.lot}, ${stock.available} + ${quantity})`,
     })
     .where(eq(stock.dosage, dosage));
+}
+
+/* ------------------------------------------------------------------ */
+/* Registro de Cliques                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Grava um novo evento de clique no banco. */
+export async function recordClick(data: {
+  elementId: string;
+  elementText?: string;
+  pageUrl: string;
+  clientIp?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.insert(clicks).values({
+    elementId: data.elementId,
+    elementText: data.elementText ?? null,
+    pageUrl: data.pageUrl,
+    clientIp: data.clientIp ?? null,
+  });
+}
+
+/**
+ * Retorna o total de cliques agrupados por elemento.
+ * Útil para o dashboard administrativo.
+ */
+export async function getClickStats() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select({
+      elementId: clicks.elementId,
+      total: count(),
+      lastClick: sql<string>`MAX(${clicks.createdAt})`,
+    })
+    .from(clicks)
+    .groupBy(clicks.elementId)
+    .orderBy(desc(count()));
 }
 
 /* ------------------------------------------------------------------ */

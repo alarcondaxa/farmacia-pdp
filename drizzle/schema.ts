@@ -143,3 +143,30 @@ export const stock = mysqlTable("stock", {
 });
 
 export type Stock = typeof stock.$inferSelect;
+
+/**
+ * Registro de cliques em elementos da interface.
+ * Permite saber quais botões e links os clientes estão usando.
+ */
+export const clicks = mysqlTable(
+  "clicks",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    /** Identificador único do elemento clicado (ex: 'buy-now-button'). */
+    elementId: varchar("elementId", { length: 128 }).notNull(),
+    /** Texto visível no elemento no momento do clique. */
+    elementText: text("elementText"),
+    /** URL da página onde o clique ocorreu. */
+    pageUrl: text("pageUrl").notNull(),
+    /** IP do cliente para evitar contagem duplicada excessiva de um mesmo usuário. */
+    clientIp: varchar("clientIp", { length: 64 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ({
+    elementIdIdx: index("idx_clicks_elementId").on(table.elementId),
+    createdAtIdx: index("idx_clicks_createdAt").on(table.createdAt),
+  }),
+);
+
+export type Click = typeof clicks.$inferSelect;
+export type InsertClick = typeof clicks.$inferInsert;

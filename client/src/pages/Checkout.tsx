@@ -747,7 +747,10 @@ export default function Checkout() {
             </p>
 
             <button
-              onClick={submit}
+              onClick={() => {
+                submit();
+                trackClick("checkout-finish-order", `Finalizar ${method}`);
+              }}
               disabled={sending || blockedItems.length > 0}
               className="rd-press mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-rd-action py-3 text-[15px] font-bold text-white hover:bg-rd-dark disabled:opacity-70">
               {sending && <Loader2 size={16} className="animate-spin" />}
