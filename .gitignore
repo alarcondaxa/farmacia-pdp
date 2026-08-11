@@ -113,3 +113,7 @@ temp/
 client/public/__manus__/version.json
 .project-config.json
 .vercel
+
+# Notas internas com credenciais
+NOTAS_INFRA.md
+scripts/test-mongo.mjs

@@ -27,142 +27,6 @@ var decodeOAuthState = (state) => {
 // server/_core/oauth.ts
 import { parse as parseCookieHeader2 } from "cookie";
 
-// server/db.ts
-import { and, count, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-
-// drizzle/schema.ts
-import {
-  decimal,
-  int,
-  index,
-  mysqlEnum,
-  mysqlTable,
-  text,
-  timestamp,
-  varchar
-} from "drizzle-orm/mysql-core";
-var users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
-  id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
-  name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull()
-});
-var orders = mysqlTable(
-  "orders",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    /** Código legível exibido ao cliente, ex.: TG-000123. */
-    reference: varchar("reference", { length: 32 }).notNull().unique(),
-    customerName: varchar("customerName", { length: 200 }).notNull(),
-    email: varchar("email", { length: 320 }).notNull(),
-    cpf: varchar("cpf", { length: 20 }).notNull(),
-    phone: varchar("phone", { length: 30 }).notNull(),
-    cep: varchar("cep", { length: 12 }).notNull(),
-    address: varchar("address", { length: 255 }).notNull(),
-    number: varchar("number", { length: 20 }).notNull(),
-    complement: varchar("complement", { length: 120 }),
-    district: varchar("district", { length: 120 }).notNull(),
-    city: varchar("city", { length: 120 }).notNull(),
-    state: varchar("state", { length: 4 }).notNull(),
-    paymentMethod: mysqlEnum("paymentMethod", ["pix", "card"]).notNull(),
-    installments: int("installments").default(1).notNull(),
-    /**
-     * Dados NÃO sensíveis do cartão, apenas para identificar o pagamento.
-     * Número completo, validade e CVV nunca são gravados (regras PCI-DSS).
-     */
-    cardBrand: varchar("cardBrand", { length: 20 }),
-    cardLast4: varchar("cardLast4", { length: 4 }),
-    cardHolder: varchar("cardHolder", { length: 120 }),
-    /** Total do pedido em reais. */
-    total: decimal("total", { precision: 10, scale: 2 }).notNull(),
-    /** Itens do pedido serializados em JSON. */
-    items: text("items").notNull(),
-    /** Código Pix copia-e-cola gerado no momento do pedido. */
-    pixPayload: text("pixPayload"),
-    /**
-     * `awaiting_confirmation` significa que o cliente clicou em "Já paguei".
-     * É um aviso, não uma confirmação: o admin valida no banco e marca `paid`.
-     * `card_declined` marca a tentativa de pagamento no cartão que não foi
-     * autorizada — o pedido e os dados do cliente ficam salvos para retomada.
-     */
-    status: mysqlEnum("status", [
-      "pending",
-      "awaiting_confirmation",
-      "card_declined",
-      "paid",
-      "shipped",
-      "canceled"
-    ]).default("pending").notNull(),
-    /** Momento em que o cliente declarou ter pago. */
-    paymentClaimedAt: timestamp("paymentClaimedAt"),
-    /**
-     * Momento em que a compra foi enviada ao Meta pela Conversions API.
-     * Funciona como trava: marcar o pedido como pago outra vez não duplica a
-     * conversão. O `event_id` enviado é a própria referência do pedido, então o
-     * Meta também desduplica o evento do navegador com o do servidor.
-     */
-    capiSentAt: timestamp("capiSentAt"),
-    /** Momento em que a cobrança Pix foi enviada ao cliente pelo WhatsApp. */
-    chargeSentAt: timestamp("chargeSentAt"),
-    /**
-     * IP de origem do pedido, usado para limitar o número de compras por IP.
-     * Guardado como texto para aceitar IPv4 e IPv6.
-     */
-    clientIp: varchar("clientIp", { length: 64 }),
-    notes: text("notes"),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
-  },
-  (table) => ({
-    // Índices usados pelo limite por IP e pela listagem do painel.
-    clientIpIdx: index("idx_orders_clientIp").on(table.clientIp),
-    createdAtIdx: index("idx_orders_createdAt").on(table.createdAt)
-  })
-);
-var settings = mysqlTable("settings", {
-  id: int("id").autoincrement().primaryKey(),
-  settingKey: varchar("settingKey", { length: 64 }).notNull().unique(),
-  settingValue: text("settingValue"),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
-});
-var stock = mysqlTable("stock", {
-  id: int("id").autoincrement().primaryKey(),
-  dosage: varchar("dosage", { length: 20 }).notNull().unique(),
-  available: int("available").notNull().default(0),
-  lot: int("lot").notNull().default(10),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull()
-});
-var clicks = mysqlTable(
-  "clicks",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    /** Identificador único do elemento clicado (ex: 'buy-now-button'). */
-    elementId: varchar("elementId", { length: 128 }).notNull(),
-    /** Texto visível no elemento no momento do clique. */
-    elementText: text("elementText"),
-    /** URL da página onde o clique ocorreu. */
-    pageUrl: text("pageUrl").notNull(),
-    /** IP do cliente para evitar contagem duplicada excessiva de um mesmo usuário. */
-    clientIp: varchar("clientIp", { length: 64 }),
-    createdAt: timestamp("createdAt").defaultNow().notNull()
-  },
-  (table) => ({
-    elementIdIdx: index("idx_clicks_elementId").on(table.elementId),
-    createdAtIdx: index("idx_clicks_createdAt").on(table.createdAt)
-  })
-);
-
 // server/_core/env.ts
 var ENV = {
   appId: process.env.VITE_APP_ID ?? "",
@@ -175,61 +39,84 @@ var ENV = {
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? ""
 };
 
-// server/db.ts
-var _db = null;
-async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
-  }
-  return _db;
+// server/mongo.ts
+import { MongoClient } from "mongodb";
+var clientPromise = null;
+function getUri() {
+  return process.env.MONGODB_URI || process.env.DATABASE_URL;
 }
+function getDbName() {
+  return process.env.MONGODB_DB || "farmacia";
+}
+async function getMongo() {
+  const uri = getUri();
+  if (!uri || !uri.startsWith("mongodb")) {
+    return null;
+  }
+  try {
+    if (!clientPromise) {
+      const client2 = new MongoClient(uri, {
+        maxPoolSize: 10,
+        serverSelectionTimeoutMS: 1e4
+      });
+      clientPromise = client2.connect();
+    }
+    const client = await clientPromise;
+    return client.db(getDbName());
+  } catch (error) {
+    console.error("[MongoDB] Falha ao conectar:", error);
+    clientPromise = null;
+    return null;
+  }
+}
+async function nextSequence(name) {
+  const db = await getMongo();
+  if (!db) throw new Error("Banco de dados indispon\xEDvel");
+  const result = await db.collection("counters").findOneAndUpdate(
+    { _id: name },
+    { $inc: { seq: 1 } },
+    { upsert: true, returnDocument: "after" }
+  );
+  return result?.seq ?? 1;
+}
+
+// server/db.ts
 async function upsertUser(user) {
   if (!user.openId) {
     throw new Error("User openId is required for upsert");
   }
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) {
     console.warn("[Database] Cannot upsert user: database not available");
     return;
   }
   try {
-    const values = {
-      openId: user.openId
-    };
-    const updateSet = {};
-    const textFields = ["name", "email", "loginMethod"];
-    const assignNullable = (field2) => {
+    const now = /* @__PURE__ */ new Date();
+    const set = { updatedAt: now };
+    ["name", "email", "loginMethod"].forEach((field2) => {
       const value = user[field2];
-      if (value === void 0) return;
-      const normalized = value ?? null;
-      values[field2] = normalized;
-      updateSet[field2] = normalized;
-    };
-    textFields.forEach(assignNullable);
-    if (user.lastSignedIn !== void 0) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
+      if (value !== void 0) set[field2] = value ?? null;
+    });
+    set.lastSignedIn = user.lastSignedIn ?? now;
     if (user.role !== void 0) {
-      values.role = user.role;
-      updateSet.role = user.role;
+      set.role = user.role;
     } else if (user.openId === ENV.ownerOpenId) {
-      values.role = "admin";
-      updateSet.role = "admin";
+      set.role = "admin";
     }
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = /* @__PURE__ */ new Date();
+    const existing = await db.collection("users").findOne({ openId: user.openId });
+    if (existing) {
+      await db.collection("users").updateOne({ openId: user.openId }, { $set: set });
+      return;
     }
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = /* @__PURE__ */ new Date();
-    }
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet
+    await db.collection("users").insertOne({
+      id: await nextSequence("users"),
+      openId: user.openId,
+      name: null,
+      email: null,
+      loginMethod: null,
+      role: "user",
+      createdAt: now,
+      ...set
     });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
@@ -237,13 +124,16 @@ async function upsertUser(user) {
   }
 }
 async function getUserByOpenId(openId) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) {
     console.warn("[Database] Cannot get user: database not available");
     return void 0;
   }
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
-  return result.length > 0 ? result[0] : void 0;
+  const user = await db.collection("users").findOne(
+    { openId },
+    { projection: { _id: 0 } }
+  );
+  return user ?? void 0;
 }
 var SETTING_KEYS = [
   "pixKey",
@@ -256,163 +146,231 @@ var SETTING_KEYS = [
   // Janela em horas considerada no limite por IP (0 = sem janela, vale sempre).
   "ipWindowHours",
   /* ---- Rastreamento de conversões ---- */
-  // ID do Meta Pixel (Facebook/Instagram), ex.: 1234567890123456
   "metaPixelId",
-  // Token da Conversions API do Meta (opcional, envio servidor a servidor)
   "metaCapiToken",
-  // ID de métrica do GA4, ex.: G-XXXXXXXXXX
   "ga4MeasurementId",
-  // ID de conversão do Google Ads, ex.: AW-123456789
   "googleAdsId",
-  // Rótulo da conversão de compra no Google Ads, ex.: AbC-D_efGh
   "googleAdsPurchaseLabel",
-  // Google Tag Manager (opcional), ex.: GTM-XXXXXXX
   "gtmId",
-  // "1" ativa os disparos; "0" mantém as tags desligadas sem perder os IDs.
   "trackingEnabled"
 ];
 async function getSettings() {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return {};
-  const rows = await db.select().from(settings).where(inArray(settings.settingKey, [...SETTING_KEYS]));
+  const rows = await db.collection("settings").find({ settingKey: { $in: [...SETTING_KEYS] } }).toArray();
   return rows.reduce((acc, row) => {
     acc[row.settingKey] = row.settingValue ?? "";
     return acc;
   }, {});
 }
 async function saveSettings(values) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
   const entries = Object.entries(values).filter(
     ([key]) => SETTING_KEYS.includes(key)
   );
   for (const [settingKey, settingValue] of entries) {
-    await db.insert(settings).values({ settingKey, settingValue }).onDuplicateKeyUpdate({ set: { settingValue } });
+    await db.collection("settings").updateOne(
+      { settingKey },
+      { $set: { settingValue, updatedAt: /* @__PURE__ */ new Date() } },
+      { upsert: true }
+    );
   }
 }
 async function createOrder(order) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  await db.insert(orders).values(order);
-  const created = await db.select().from(orders).where(eq(orders.reference, order.reference)).limit(1);
-  return created[0];
+  const now = /* @__PURE__ */ new Date();
+  const doc = {
+    id: await nextSequence("orders"),
+    installments: 1,
+    status: "pending",
+    complement: null,
+    cardBrand: null,
+    cardLast4: null,
+    cardHolder: null,
+    pixPayload: null,
+    paymentClaimedAt: null,
+    capiSentAt: null,
+    chargeSentAt: null,
+    clientIp: null,
+    notes: null,
+    ...order,
+    // `total` é decimal no MySQL; no Mongo guardamos string para preservar as
+    // duas casas decimais exatamente como o restante do código espera.
+    total: String(order.total),
+    createdAt: now,
+    updatedAt: now
+  };
+  await db.collection("orders").insertOne(doc);
+  return db.collection("orders").findOne({ reference: order.reference }, { projection: { _id: 0 } });
 }
 async function getNextOrderSequence() {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return 1;
-  const rows = await db.select({ total: count() }).from(orders);
-  return Number(rows[0]?.total ?? 0) + 1;
+  const total = await db.collection("orders").countDocuments();
+  return total + 1;
 }
 async function getOrderById(id) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return void 0;
-  const rows = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
-  return rows[0];
+  const order = await db.collection("orders").findOne({ id }, { projection: { _id: 0 } });
+  return order ?? void 0;
 }
 async function listOrders() {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return [];
-  return db.select().from(orders).orderBy(desc(orders.createdAt));
+  return db.collection("orders").find({}, { projection: { _id: 0 } }).sort({ createdAt: -1 }).toArray();
 }
 async function getOrderByReference(reference) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return void 0;
-  const rows = await db.select().from(orders).where(eq(orders.reference, reference)).limit(1);
-  return rows[0];
+  const order = await db.collection("orders").findOne({ reference }, { projection: { _id: 0 } });
+  return order ?? void 0;
 }
 async function updateOrderStatus(id, status) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  await db.update(orders).set({ status }).where(eq(orders.id, id));
+  await db.collection("orders").updateOne({ id }, { $set: { status, updatedAt: /* @__PURE__ */ new Date() } });
 }
 async function claimOrderPayment(reference) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  await db.update(orders).set({ status: "awaiting_confirmation", paymentClaimedAt: /* @__PURE__ */ new Date() }).where(and(eq(orders.reference, reference), eq(orders.status, "pending")));
+  await db.collection("orders").updateOne(
+    { reference, status: "pending" },
+    {
+      $set: {
+        status: "awaiting_confirmation",
+        paymentClaimedAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }
+    }
+  );
 }
 async function setOrderPixPayload(reference, pixPayload) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  await db.update(orders).set({ pixPayload, paymentMethod: "pix", status: "pending" }).where(eq(orders.reference, reference));
+  await db.collection("orders").updateOne(
+    { reference },
+    {
+      $set: {
+        pixPayload,
+        paymentMethod: "pix",
+        status: "pending",
+        updatedAt: /* @__PURE__ */ new Date()
+      }
+    }
+  );
 }
 async function deleteOrder(id) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  await db.delete(orders).where(eq(orders.id, id));
+  await db.collection("orders").deleteOne({ id });
 }
 async function markCapiSent(id) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  const result = await db.update(orders).set({ capiSentAt: /* @__PURE__ */ new Date() }).where(and(eq(orders.id, id), isNull(orders.capiSentAt)));
-  const affected = result?.affectedRows;
-  return (affected ?? 0) > 0;
+  const result = await db.collection("orders").updateOne(
+    { id, $or: [{ capiSentAt: null }, { capiSentAt: { $exists: false } }] },
+    { $set: { capiSentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() } }
+  );
+  return result.modifiedCount > 0;
 }
 async function markChargeSent(id) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  await db.update(orders).set({ chargeSentAt: /* @__PURE__ */ new Date() }).where(eq(orders.id, id));
+  await db.collection("orders").updateOne({ id }, { $set: { chargeSentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() } });
 }
 async function clearCapiSent(id) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  await db.update(orders).set({ capiSentAt: null }).where(eq(orders.id, id));
+  await db.collection("orders").updateOne({ id }, { $set: { capiSentAt: null, updatedAt: /* @__PURE__ */ new Date() } });
 }
 async function listStock() {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return [];
-  return db.select().from(stock).orderBy(stock.id);
+  return db.collection("stock").find({}, { projection: { _id: 0 } }).sort({ id: 1 }).toArray();
 }
 async function upsertStock(dosage, available, lot) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  await db.insert(stock).values({ dosage, available, lot }).onDuplicateKeyUpdate({ set: { available, lot } });
+  const existing = await db.collection("stock").findOne({ dosage });
+  if (existing) {
+    await db.collection("stock").updateOne({ dosage }, { $set: { available, lot, updatedAt: /* @__PURE__ */ new Date() } });
+    return;
+  }
+  await db.collection("stock").insertOne({
+    id: await nextSequence("stock"),
+    dosage,
+    available,
+    lot,
+    updatedAt: /* @__PURE__ */ new Date()
+  });
 }
 async function decrementStock(dosage, quantity) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  const result = await db.update(stock).set({ available: sql`${stock.available} - ${quantity}` }).where(and(eq(stock.dosage, dosage), gte(stock.available, quantity)));
-  const affected = result?.rowsAffected ?? result[0]?.affectedRows ?? 0;
-  return affected > 0;
+  const result = await db.collection("stock").updateOne(
+    { dosage, available: { $gte: quantity } },
+    { $inc: { available: -quantity }, $set: { updatedAt: /* @__PURE__ */ new Date() } }
+  );
+  return result.modifiedCount > 0;
 }
 async function restoreStock(dosage, quantity) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indispon\xEDvel");
-  await db.update(stock).set({
-    available: sql`LEAST(${stock.lot}, ${stock.available} + ${quantity})`
-  }).where(eq(stock.dosage, dosage));
+  const row = await db.collection("stock").findOne({ dosage });
+  if (!row) return;
+  const available = Math.min(row.lot, row.available + quantity);
+  await db.collection("stock").updateOne({ dosage }, { $set: { available, updatedAt: /* @__PURE__ */ new Date() } });
 }
 async function recordClick(data) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return;
-  await db.insert(clicks).values({
+  await db.collection("clicks").insertOne({
+    id: await nextSequence("clicks"),
     elementId: data.elementId,
     elementText: data.elementText ?? null,
     pageUrl: data.pageUrl,
-    clientIp: data.clientIp ?? null
+    clientIp: data.clientIp ?? null,
+    createdAt: /* @__PURE__ */ new Date()
   });
 }
 async function getClickStats() {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return [];
-  return db.select({
-    elementId: clicks.elementId,
-    total: count(),
-    lastClick: sql`MAX(${clicks.createdAt})`
-  }).from(clicks).groupBy(clicks.elementId).orderBy(desc(count()));
+  const rows = await db.collection("clicks").aggregate([
+    {
+      $group: {
+        _id: "$elementId",
+        total: { $sum: 1 },
+        lastClick: { $max: "$createdAt" }
+      }
+    },
+    { $sort: { total: -1 } },
+    {
+      $project: {
+        _id: 0,
+        elementId: "$_id",
+        total: 1,
+        lastClick: 1
+      }
+    }
+  ]).toArray();
+  return rows;
 }
 async function countOrdersByIp(clientIp, windowHours) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return 0;
-  const filters = [
-    eq(orders.clientIp, clientIp),
-    sql`${orders.status} <> 'canceled'`
-  ];
+  const filter = {
+    clientIp,
+    status: { $ne: "canceled" }
+  };
   if (windowHours > 0) {
     const since = new Date(Date.now() - windowHours * 60 * 60 * 1e3);
-    filters.push(gte(orders.createdAt, since));
+    filter.createdAt = { $gte: since };
   }
-  const rows = await db.select({ total: count() }).from(orders).where(and(...filters));
-  return Number(rows[0]?.total ?? 0);
+  return db.collection("orders").countDocuments(filter);
 }
 
 // server/_core/cookies.ts
@@ -917,11 +875,11 @@ function field(id, value) {
   const size = value.length.toString().padStart(2, "0");
   return `${id}${size}${value}`;
 }
-function sanitize(text2, maxLength) {
-  return text2.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 .,\-]/g, "").trim().slice(0, maxLength).toUpperCase();
+function sanitize(text, maxLength) {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 .,\-]/g, "").trim().slice(0, maxLength).toUpperCase();
 }
-function sanitizeTxid(text2) {
-  const cleaned = text2.replace(/[^A-Za-z0-9]/g, "").slice(0, 25);
+function sanitizeTxid(text) {
+  const cleaned = text.replace(/[^A-Za-z0-9]/g, "").slice(0, 25);
   return cleaned.length > 0 ? cleaned : "***";
 }
 function crc16(payload) {
@@ -1048,16 +1006,16 @@ async function sendPurchaseToMeta(order, config) {
       signal: controller.signal
     });
     clearTimeout(timeout);
-    const text2 = await response.text();
+    const text = await response.text();
     if (!response.ok) {
       return {
         sent: false,
-        reason: `Meta respondeu ${response.status}: ${text2.slice(0, 300)}`
+        reason: `Meta respondeu ${response.status}: ${text.slice(0, 300)}`
       };
     }
     let received = 1;
     try {
-      const parsed = JSON.parse(text2);
+      const parsed = JSON.parse(text);
       received = parsed.events_received ?? 1;
     } catch {
     }
@@ -1121,17 +1079,17 @@ var DEFAULT_MAX_ORDERS_PER_IP = 2;
 var DEFAULT_IP_WINDOW_HOURS = 24;
 async function sendOrderConversion(orderId) {
   try {
-    const [order, settings2] = await Promise.all([
+    const [order, settings] = await Promise.all([
       getOrderById(orderId),
       getSettings()
     ]);
     if (!order) return { sent: false, reason: "Pedido n\xE3o encontrado" };
-    const trackingOn = (settings2.trackingEnabled ?? "1") !== "0";
+    const trackingOn = (settings.trackingEnabled ?? "1") !== "0";
     if (!trackingOn) {
       return { sent: false, reason: "Rastreamento desativado no painel" };
     }
-    const pixelId = settings2.metaPixelId ?? "";
-    const accessToken = settings2.metaCapiToken ?? "";
+    const pixelId = settings.metaPixelId ?? "";
+    const accessToken = settings.metaCapiToken ?? "";
     if (!pixelId || !accessToken) {
       return {
         sent: false,
@@ -1164,7 +1122,7 @@ async function sendOrderConversion(orderId) {
       {
         pixelId,
         accessToken,
-        testEventCode: settings2.metaTestEventCode || void 0
+        testEventCode: settings.metaTestEventCode || void 0
       }
     );
     if (!result.sent) {
@@ -1217,8 +1175,8 @@ var storeRouter = router({
   }),
   /** Informa ao checkout se o Pix já está configurado pelo administrador. */
   pixStatus: publicProcedure.query(async () => {
-    const settings2 = await getSettings();
-    return { configured: Boolean(settings2.pixKey) };
+    const settings = await getSettings();
+    return { configured: Boolean(settings.pixKey) };
   }),
   /**
    * IDs de rastreamento visíveis ao navegador. Só devolve os identificadores
@@ -1226,15 +1184,15 @@ var storeRouter = router({
    * Conversions API nunca sai do servidor.
    */
   tracking: publicProcedure.query(async () => {
-    const settings2 = await getSettings();
-    const enabled = (settings2.trackingEnabled ?? "1") !== "0";
+    const settings = await getSettings();
+    const enabled = (settings.trackingEnabled ?? "1") !== "0";
     return {
       enabled,
-      metaPixelId: enabled ? settings2.metaPixelId ?? "" : "",
-      ga4MeasurementId: enabled ? settings2.ga4MeasurementId ?? "" : "",
-      googleAdsId: enabled ? settings2.googleAdsId ?? "" : "",
-      googleAdsPurchaseLabel: enabled ? settings2.googleAdsPurchaseLabel ?? "" : "",
-      gtmId: enabled ? settings2.gtmId ?? "" : ""
+      metaPixelId: enabled ? settings.metaPixelId ?? "" : "",
+      ga4MeasurementId: enabled ? settings.ga4MeasurementId ?? "" : "",
+      googleAdsId: enabled ? settings.googleAdsId ?? "" : "",
+      googleAdsPurchaseLabel: enabled ? settings.googleAdsPurchaseLabel ?? "" : "",
+      gtmId: enabled ? settings.gtmId ?? "" : ""
     };
   }),
   /**
@@ -1242,9 +1200,9 @@ var storeRouter = router({
    * Sai do banco, então o número mostrado é o mesmo que o servidor valida.
    */
   availability: publicProcedure.query(async () => {
-    const [rows, settings2] = await Promise.all([listStock(), getSettings()]);
+    const [rows, settings] = await Promise.all([listStock(), getSettings()]);
     return {
-      maxPerOrder: Number(settings2.maxOrdersPerIp || DEFAULT_MAX_ORDERS_PER_IP),
+      maxPerOrder: Number(settings.maxOrdersPerIp || DEFAULT_MAX_ORDERS_PER_IP),
       stock: rows.map((row) => ({
         dosage: row.dosage,
         available: row.available,
@@ -1269,12 +1227,12 @@ var storeRouter = router({
   /** Registra o pedido e devolve o Pix copia-e-cola quando aplicável. */
   createOrder: publicProcedure.input(checkoutSchema).mutation(async ({ input, ctx }) => {
     const clientIp = resolveClientIp(ctx.req);
-    const settings2 = await getSettings();
+    const settings = await getSettings();
     const maxPerIp = Number(
-      settings2.maxOrdersPerIp || DEFAULT_MAX_ORDERS_PER_IP
+      settings.maxOrdersPerIp || DEFAULT_MAX_ORDERS_PER_IP
     );
     const windowHours = Number(
-      settings2.ipWindowHours ?? DEFAULT_IP_WINDOW_HOURS
+      settings.ipWindowHours ?? DEFAULT_IP_WINDOW_HOURS
     );
     if (maxPerIp > 0) {
       const already = await countOrdersByIp(clientIp, windowHours);
@@ -1320,7 +1278,7 @@ var storeRouter = router({
       taken.push({ dosage, quantity });
     }
     const total = calculateTotal(input.items);
-    if (input.paymentMethod === "pix" && !settings2.pixKey) {
+    if (input.paymentMethod === "pix" && !settings.pixKey) {
       for (const done of taken) {
         await restoreStock(done.dosage, done.quantity);
       }
@@ -1337,9 +1295,9 @@ var storeRouter = router({
     for (let attempt = 0; attempt < 5; attempt += 1) {
       reference = `TG-${(baseSequence + attempt).toString().padStart(6, "0")}`;
       pixPayload = input.paymentMethod === "pix" ? buildPixPayload({
-        key: settings2.pixKey,
-        merchantName: settings2.pixReceiverName || "LOJA TG",
-        merchantCity: settings2.pixCity || "SAO PAULO",
+        key: settings.pixKey,
+        merchantName: settings.pixReceiverName || "LOJA TG",
+        merchantCity: settings.pixCity || "SAO PAULO",
         amount: total,
         txid: reference
       }) : null;
@@ -1509,17 +1467,17 @@ var storeRouter = router({
         message: "Este pedido foi cancelado. Fa\xE7a um novo pedido para pagar com Pix."
       });
     }
-    const settings2 = await getSettings();
-    if (!settings2.pixKey) {
+    const settings = await getSettings();
+    if (!settings.pixKey) {
       throw new TRPCError3({
         code: "PRECONDITION_FAILED",
         message: "A chave Pix ainda n\xE3o foi configurada pela loja. Entre em contato para concluir o pagamento."
       });
     }
     const pixPayload = buildPixPayload({
-      key: settings2.pixKey,
-      merchantName: settings2.pixReceiverName || "LOJA TG",
-      merchantCity: settings2.pixCity || "SAO PAULO",
+      key: settings.pixKey,
+      merchantName: settings.pixReceiverName || "LOJA TG",
+      merchantCity: settings.pixCity || "SAO PAULO",
       amount: Number(order.total),
       txid: order.reference
     });
@@ -1541,26 +1499,26 @@ var storeRouter = router({
       }));
     }),
     settings: adminProcedure.query(async () => {
-      const settings2 = await getSettings();
+      const settings = await getSettings();
       return {
-        pixKey: settings2.pixKey ?? "",
-        pixKeyType: settings2.pixKeyType ?? "aleatoria",
-        pixReceiverName: settings2.pixReceiverName ?? "",
-        pixCity: settings2.pixCity ?? "",
-        storeWhatsapp: settings2.storeWhatsapp ?? "",
+        pixKey: settings.pixKey ?? "",
+        pixKeyType: settings.pixKeyType ?? "aleatoria",
+        pixReceiverName: settings.pixReceiverName ?? "",
+        pixCity: settings.pixCity ?? "",
+        storeWhatsapp: settings.storeWhatsapp ?? "",
         maxOrdersPerIp: Number(
-          settings2.maxOrdersPerIp || DEFAULT_MAX_ORDERS_PER_IP
+          settings.maxOrdersPerIp || DEFAULT_MAX_ORDERS_PER_IP
         ),
-        ipWindowHours: Number(settings2.ipWindowHours ?? DEFAULT_IP_WINDOW_HOURS),
+        ipWindowHours: Number(settings.ipWindowHours ?? DEFAULT_IP_WINDOW_HOURS),
         /* Rastreamento de conversões */
-        trackingEnabled: (settings2.trackingEnabled ?? "1") !== "0",
-        metaPixelId: settings2.metaPixelId ?? "",
-        metaCapiToken: settings2.metaCapiToken ?? "",
-        metaTestEventCode: settings2.metaTestEventCode ?? "",
-        ga4MeasurementId: settings2.ga4MeasurementId ?? "",
-        googleAdsId: settings2.googleAdsId ?? "",
-        googleAdsPurchaseLabel: settings2.googleAdsPurchaseLabel ?? "",
-        gtmId: settings2.gtmId ?? ""
+        trackingEnabled: (settings.trackingEnabled ?? "1") !== "0",
+        metaPixelId: settings.metaPixelId ?? "",
+        metaCapiToken: settings.metaCapiToken ?? "",
+        metaTestEventCode: settings.metaTestEventCode ?? "",
+        ga4MeasurementId: settings.ga4MeasurementId ?? "",
+        googleAdsId: settings.googleAdsId ?? "",
+        googleAdsPurchaseLabel: settings.googleAdsPurchaseLabel ?? "",
+        gtmId: settings.gtmId ?? ""
       };
     }),
     saveSettings: adminProcedure.input(
@@ -1702,8 +1660,8 @@ var storeRouter = router({
       }
       let pixPayload = order.pixPayload ?? "";
       if (!pixPayload) {
-        const settings2 = await getSettings();
-        const pixKey = settings2.pixKey?.trim();
+        const settings = await getSettings();
+        const pixKey = settings.pixKey?.trim();
         if (!pixKey) {
           throw new TRPCError3({
             code: "PRECONDITION_FAILED",
@@ -1712,8 +1670,8 @@ var storeRouter = router({
         }
         pixPayload = buildPixPayload({
           key: pixKey,
-          merchantName: settings2.pixReceiverName || "LOJA",
-          merchantCity: settings2.pixCity || "SAO PAULO",
+          merchantName: settings.pixReceiverName || "LOJA",
+          merchantCity: settings.pixCity || "SAO PAULO",
           amount: Number(order.total),
           txid: order.reference.replace(/[^A-Za-z0-9]/g, "").slice(0, 25)
         });

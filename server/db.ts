@@ -1,83 +1,68 @@
-import { and, count, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import {
-  InsertOrder,
-  InsertUser,
-  clicks,
-  orders,
-  settings,
-  stock,
-  users,
-} from "../drizzle/schema";
-import { ENV } from './_core/env';
+/**
+ * Camada de acesso a dados — MongoDB Atlas.
+ *
+ * A assinatura de todas as funções foi preservada em relação à versão anterior
+ * (Drizzle/MySQL), de modo que os routers tRPC continuam funcionando sem
+ * alteração. Internamente, cada "tabela" virou uma coleção do MongoDB e o
+ * auto-increment numérico é emulado pela coleção `counters`.
+ */
+import type { InsertOrder, InsertUser } from "../drizzle/schema";
+import { ENV } from "./_core/env";
+import { getMongo, nextSequence } from "./mongo";
 
-let _db: ReturnType<typeof drizzle> | null = null;
-
-// Lazily create the drizzle instance so local tooling can run without a DB.
+/** Mantido por compatibilidade com chamadas legadas. */
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
-  }
-  return _db;
+  return getMongo();
 }
+
+/* ------------------------------------------------------------------ */
+/* Usuários                                                            */
+/* ------------------------------------------------------------------ */
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) {
     throw new Error("User openId is required for upsert");
   }
 
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) {
     console.warn("[Database] Cannot upsert user: database not available");
     return;
   }
 
   try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
+    const now = new Date();
+    const set: Record<string, unknown> = { updatedAt: now };
 
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
+    (["name", "email", "loginMethod"] as const).forEach((field) => {
       const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
+      if (value !== undefined) set[field] = value ?? null;
+    });
 
-    textFields.forEach(assignNullable);
+    set.lastSignedIn = user.lastSignedIn ?? now;
 
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
     if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
+      set.role = user.role;
     } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
+      set.role = "admin";
     }
 
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
+    const existing = await db.collection("users").findOne({ openId: user.openId });
+
+    if (existing) {
+      await db.collection("users").updateOne({ openId: user.openId }, { $set: set });
+      return;
     }
 
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
+    await db.collection("users").insertOne({
+      id: await nextSequence("users"),
+      openId: user.openId,
+      name: null,
+      email: null,
+      loginMethod: null,
+      role: "user",
+      createdAt: now,
+      ...set,
     });
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
@@ -86,15 +71,18 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 }
 
 export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) {
     console.warn("[Database] Cannot get user: database not available");
     return undefined;
   }
 
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const user = await db.collection("users").findOne(
+    { openId },
+    { projection: { _id: 0 } }
+  );
 
-  return result.length > 0 ? result[0] : undefined;
+  return user ?? undefined;
 }
 
 /* ------------------------------------------------------------------ */
@@ -112,19 +100,12 @@ export const SETTING_KEYS = [
   // Janela em horas considerada no limite por IP (0 = sem janela, vale sempre).
   "ipWindowHours",
   /* ---- Rastreamento de conversões ---- */
-  // ID do Meta Pixel (Facebook/Instagram), ex.: 1234567890123456
   "metaPixelId",
-  // Token da Conversions API do Meta (opcional, envio servidor a servidor)
   "metaCapiToken",
-  // ID de métrica do GA4, ex.: G-XXXXXXXXXX
   "ga4MeasurementId",
-  // ID de conversão do Google Ads, ex.: AW-123456789
   "googleAdsId",
-  // Rótulo da conversão de compra no Google Ads, ex.: AbC-D_efGh
   "googleAdsPurchaseLabel",
-  // Google Tag Manager (opcional), ex.: GTM-XXXXXXX
   "gtmId",
-  // "1" ativa os disparos; "0" mantém as tags desligadas sem perder os IDs.
   "trackingEnabled",
 ] as const;
 
@@ -132,13 +113,13 @@ export type SettingKey = (typeof SETTING_KEYS)[number];
 
 /** Lê todas as configurações em um objeto simples. */
 export async function getSettings(): Promise<Record<string, string>> {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return {};
 
   const rows = await db
-    .select()
-    .from(settings)
-    .where(inArray(settings.settingKey, [...SETTING_KEYS]));
+    .collection<{ settingKey: string; settingValue: string | null }>("settings")
+    .find({ settingKey: { $in: [...SETTING_KEYS] } })
+    .toArray();
 
   return rows.reduce<Record<string, string>>((acc, row) => {
     acc[row.settingKey] = row.settingValue ?? "";
@@ -148,18 +129,19 @@ export async function getSettings(): Promise<Record<string, string>> {
 
 /** Grava (ou atualiza) um conjunto de configurações. */
 export async function saveSettings(values: Record<string, string>): Promise<void> {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
   const entries = Object.entries(values).filter(([key]) =>
-    (SETTING_KEYS as readonly string[]).includes(key),
+    (SETTING_KEYS as readonly string[]).includes(key)
   );
 
   for (const [settingKey, settingValue] of entries) {
-    await db
-      .insert(settings)
-      .values({ settingKey, settingValue })
-      .onDuplicateKeyUpdate({ set: { settingValue } });
+    await db.collection("settings").updateOne(
+      { settingKey },
+      { $set: { settingValue, updatedAt: new Date() } },
+      { upsert: true }
+    );
   }
 }
 
@@ -168,63 +150,86 @@ export async function saveSettings(values: Record<string, string>): Promise<void
 /* ------------------------------------------------------------------ */
 
 export async function createOrder(order: InsertOrder) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
-  await db.insert(orders).values(order);
+  const now = new Date();
+  const doc = {
+    id: await nextSequence("orders"),
+    installments: 1,
+    status: "pending" as const,
+    complement: null,
+    cardBrand: null,
+    cardLast4: null,
+    cardHolder: null,
+    pixPayload: null,
+    paymentClaimedAt: null,
+    capiSentAt: null,
+    chargeSentAt: null,
+    clientIp: null,
+    notes: null,
+    ...order,
+    // `total` é decimal no MySQL; no Mongo guardamos string para preservar as
+    // duas casas decimais exatamente como o restante do código espera.
+    total: String(order.total),
+    createdAt: now,
+    updatedAt: now,
+  };
 
-  const created = await db
-    .select()
-    .from(orders)
-    .where(eq(orders.reference, order.reference))
-    .limit(1);
+  await db.collection("orders").insertOne(doc as Record<string, unknown>);
 
-  return created[0];
+  return db
+    .collection("orders")
+    .findOne({ reference: order.reference }, { projection: { _id: 0 } }) as any;
 }
 
 /**
  * Sequência do código legível do pedido. Usa a quantidade de pedidos já
- * gravados (e não o `id` auto-increment, que pode começar em valores altos),
- * de modo que a numeração fique curta e previsível: TG-000001, TG-000002...
+ * gravados, de modo que a numeração fique curta e previsível: TG-000001...
  *
  * A unicidade real é garantida pelo índice único de `reference`: quem chamar
  * esta função deve tratar a colisão tentando a sequência seguinte.
  */
 export async function getNextOrderSequence(): Promise<number> {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return 1;
 
-  const rows = await db.select({ total: count() }).from(orders);
-  return Number(rows[0]?.total ?? 0) + 1;
+  const total = await db.collection("orders").countDocuments();
+  return total + 1;
 }
 
 /** Busca um pedido pelo id, sem carregar a lista inteira. */
 export async function getOrderById(id: number) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return undefined;
 
-  const rows = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
-  return rows[0];
+  const order = await db
+    .collection("orders")
+    .findOne({ id }, { projection: { _id: 0 } });
+
+  return (order ?? undefined) as any;
 }
 
 export async function listOrders() {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return [];
 
-  return db.select().from(orders).orderBy(desc(orders.createdAt));
+  return db
+    .collection("orders")
+    .find({}, { projection: { _id: 0 } })
+    .sort({ createdAt: -1 })
+    .toArray() as any;
 }
 
 export async function getOrderByReference(reference: string) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return undefined;
 
-  const rows = await db
-    .select()
-    .from(orders)
-    .where(eq(orders.reference, reference))
-    .limit(1);
+  const order = await db
+    .collection("orders")
+    .findOne({ reference }, { projection: { _id: 0 } });
 
-  return rows[0];
+  return (order ?? undefined) as any;
 }
 
 export async function updateOrderStatus(
@@ -235,12 +240,14 @@ export async function updateOrderStatus(
     | "card_declined"
     | "paid"
     | "shipped"
-    | "canceled",
+    | "canceled"
 ) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
-  await db.update(orders).set({ status }).where(eq(orders.id, id));
+  await db
+    .collection("orders")
+    .updateOne({ id }, { $set: { status, updatedAt: new Date() } });
 }
 
 /**
@@ -249,13 +256,19 @@ export async function updateOrderStatus(
  * para não sobrescrever um pedido já pago, enviado ou cancelado.
  */
 export async function claimOrderPayment(reference: string) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
-  await db
-    .update(orders)
-    .set({ status: "awaiting_confirmation", paymentClaimedAt: new Date() })
-    .where(and(eq(orders.reference, reference), eq(orders.status, "pending")));
+  await db.collection("orders").updateOne(
+    { reference, status: "pending" },
+    {
+      $set: {
+        status: "awaiting_confirmation",
+        paymentClaimedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    }
+  );
 }
 
 /**
@@ -263,20 +276,27 @@ export async function claimOrderPayment(reference: string) {
  * o cliente decide pagar via Pix) e devolve o pedido para `pending`.
  */
 export async function setOrderPixPayload(reference: string, pixPayload: string) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
-  await db
-    .update(orders)
-    .set({ pixPayload, paymentMethod: "pix", status: "pending" })
-    .where(eq(orders.reference, reference));
+  await db.collection("orders").updateOne(
+    { reference },
+    {
+      $set: {
+        pixPayload,
+        paymentMethod: "pix",
+        status: "pending",
+        updatedAt: new Date(),
+      },
+    }
+  );
 }
 
 export async function deleteOrder(id: number) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
-  await db.delete(orders).where(eq(orders.id, id));
+  await db.collection("orders").deleteOne({ id });
 }
 
 /**
@@ -286,29 +306,25 @@ export async function deleteOrder(id: number) {
  * Devolve `true` quando esta chamada foi a que registrou o envio.
  */
 export async function markCapiSent(id: number): Promise<boolean> {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
-  const result = await db
-    .update(orders)
-    .set({ capiSentAt: new Date() })
-    .where(and(eq(orders.id, id), isNull(orders.capiSentAt)));
+  const result = await db.collection("orders").updateOne(
+    { id, $or: [{ capiSentAt: null }, { capiSentAt: { $exists: false } }] },
+    { $set: { capiSentAt: new Date(), updatedAt: new Date() } }
+  );
 
-  // O driver mysql2 devolve `affectedRows`; se nada mudou, outro processo já
-  // havia enviado a conversão para este pedido.
-  const affected = (result as unknown as { affectedRows?: number })?.affectedRows;
-  return (affected ?? 0) > 0;
+  return result.modifiedCount > 0;
 }
 
 /** Registra o momento em que a cobrança Pix foi enviada pelo WhatsApp. */
 export async function markChargeSent(id: number) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
   await db
-    .update(orders)
-    .set({ chargeSentAt: new Date() })
-    .where(eq(orders.id, id));
+    .collection("orders")
+    .updateOne({ id }, { $set: { chargeSentAt: new Date(), updatedAt: new Date() } });
 }
 
 /**
@@ -316,10 +332,12 @@ export async function markChargeSent(id: number) {
  * novo. Sem isso, um erro de rede impediria a conversão para sempre.
  */
 export async function clearCapiSent(id: number) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
-  await db.update(orders).set({ capiSentAt: null }).where(eq(orders.id, id));
+  await db
+    .collection("orders")
+    .updateOne({ id }, { $set: { capiSentAt: null, updatedAt: new Date() } });
 }
 
 /* ------------------------------------------------------------------ */
@@ -328,49 +346,59 @@ export async function clearCapiSent(id: number) {
 
 /** Lista o estoque de todas as dosagens, em ordem de cadastro. */
 export async function listStock() {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return [];
 
-  return db.select().from(stock).orderBy(stock.id);
+  return db
+    .collection("stock")
+    .find({}, { projection: { _id: 0 } })
+    .sort({ id: 1 })
+    .toArray() as any;
 }
 
 /** Cria ou atualiza a quantidade disponível de uma dosagem. */
 export async function upsertStock(dosage: string, available: number, lot: number) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
-  await db
-    .insert(stock)
-    .values({ dosage, available, lot })
-    .onDuplicateKeyUpdate({ set: { available, lot } });
+  const existing = await db.collection("stock").findOne({ dosage });
+
+  if (existing) {
+    await db
+      .collection("stock")
+      .updateOne({ dosage }, { $set: { available, lot, updatedAt: new Date() } });
+    return;
+  }
+
+  await db.collection("stock").insertOne({
+    id: await nextSequence("stock"),
+    dosage,
+    available,
+    lot,
+    updatedAt: new Date(),
+  });
 }
 
 /**
- * Baixa `quantity` unidades da dosagem de forma atômica: o UPDATE só afeta a
- * linha quando ainda há saldo suficiente, então duas compras simultâneas não
- * conseguem levar o estoque a um valor negativo.
+ * Baixa `quantity` unidades da dosagem de forma atômica: o update só afeta o
+ * documento quando ainda há saldo suficiente, então duas compras simultâneas
+ * não conseguem levar o estoque a um valor negativo.
  *
  * Retorna `true` quando a baixa foi aplicada e `false` quando faltou saldo.
  */
 export async function decrementStock(
   dosage: string,
-  quantity: number,
+  quantity: number
 ): Promise<boolean> {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
-  const result = await db
-    .update(stock)
-    .set({ available: sql`${stock.available} - ${quantity}` })
-    .where(and(eq(stock.dosage, dosage), gte(stock.available, quantity)));
+  const result = await db.collection("stock").updateOne(
+    { dosage, available: { $gte: quantity } },
+    { $inc: { available: -quantity }, $set: { updatedAt: new Date() } }
+  );
 
-  // mysql2 devolve `affectedRows` no header do resultado.
-  const affected =
-    (result as unknown as { rowsAffected?: number })?.rowsAffected ??
-    (result as unknown as [{ affectedRows?: number }])[0]?.affectedRows ??
-    0;
-
-  return affected > 0;
+  return result.modifiedCount > 0;
 }
 
 /**
@@ -379,15 +407,20 @@ export async function decrementStock(
  * de 100% e o "restam X de Y" ficaria incoerente.
  */
 export async function restoreStock(dosage: string, quantity: number) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) throw new Error("Banco de dados indisponível");
 
+  const row = await db
+    .collection<{ dosage: string; available: number; lot: number }>("stock")
+    .findOne({ dosage });
+
+  if (!row) return;
+
+  const available = Math.min(row.lot, row.available + quantity);
+
   await db
-    .update(stock)
-    .set({
-      available: sql`LEAST(${stock.lot}, ${stock.available} + ${quantity})`,
-    })
-    .where(eq(stock.dosage, dosage));
+    .collection("stock")
+    .updateOne({ dosage }, { $set: { available, updatedAt: new Date() } });
 }
 
 /* ------------------------------------------------------------------ */
@@ -401,14 +434,16 @@ export async function recordClick(data: {
   pageUrl: string;
   clientIp?: string;
 }) {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return;
 
-  await db.insert(clicks).values({
+  await db.collection("clicks").insertOne({
+    id: await nextSequence("clicks"),
     elementId: data.elementId,
     elementText: data.elementText ?? null,
     pageUrl: data.pageUrl,
     clientIp: data.clientIp ?? null,
+    createdAt: new Date(),
   });
 }
 
@@ -417,18 +452,32 @@ export async function recordClick(data: {
  * Útil para o dashboard administrativo.
  */
 export async function getClickStats() {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return [];
 
-  return db
-    .select({
-      elementId: clicks.elementId,
-      total: count(),
-      lastClick: sql<string>`MAX(${clicks.createdAt})`,
-    })
-    .from(clicks)
-    .groupBy(clicks.elementId)
-    .orderBy(desc(count()));
+  const rows = await db
+    .collection("clicks")
+    .aggregate([
+      {
+        $group: {
+          _id: "$elementId",
+          total: { $sum: 1 },
+          lastClick: { $max: "$createdAt" },
+        },
+      },
+      { $sort: { total: -1 } },
+      {
+        $project: {
+          _id: 0,
+          elementId: "$_id",
+          total: 1,
+          lastClick: 1,
+        },
+      },
+    ])
+    .toArray();
+
+  return rows as Array<{ elementId: string; total: number; lastClick: Date }>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -441,25 +490,20 @@ export async function getClickStats() {
  */
 export async function countOrdersByIp(
   clientIp: string,
-  windowHours: number,
+  windowHours: number
 ): Promise<number> {
-  const db = await getDb();
+  const db = await getMongo();
   if (!db) return 0;
 
-  const filters = [
-    eq(orders.clientIp, clientIp),
-    sql`${orders.status} <> 'canceled'`,
-  ];
+  const filter: Record<string, unknown> = {
+    clientIp,
+    status: { $ne: "canceled" },
+  };
 
   if (windowHours > 0) {
     const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
-    filters.push(gte(orders.createdAt, since));
+    filter.createdAt = { $gte: since };
   }
 
-  const rows = await db
-    .select({ total: count() })
-    .from(orders)
-    .where(and(...filters));
-
-  return Number(rows[0]?.total ?? 0);
+  return db.collection("orders").countDocuments(filter);
 }
