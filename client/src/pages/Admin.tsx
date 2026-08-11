@@ -195,10 +195,38 @@ function OverviewCard({ onNavigate }: { onNavigate: (area: AdminArea) => void })
 }
 
 function ClickStatsCard() {
+  const utils = trpc.useUtils();
   const statsQuery = trpc.store.admin.clickStats.useQuery(undefined, {
     refetchInterval: 15000,
   });
   const [selectedPage, setSelectedPage] = useState("__all__");
+  const clearHistory = trpc.store.admin.clearClickHistory.useMutation({
+    onSuccess: async ({ deleted }) => {
+      setSelectedPage("__all__");
+      await utils.store.admin.clickStats.invalidate();
+      toast.success(
+        deleted === 1
+          ? "1 clique foi removido do histórico."
+          : `${deleted} cliques foram removidos do histórico.`,
+      );
+    },
+    onError: () => {
+      toast.error("Não foi possível limpar o histórico de cliques.");
+    },
+  });
+
+  const handleClearHistory = () => {
+    const total = statsQuery.data?.totalClicks ?? 0;
+    if (total === 0) {
+      toast.message("Não há cliques para limpar.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Apagar definitivamente todos os ${total} cliques registrados? Esta ação não pode ser desfeita.`,
+    );
+    if (confirmed) clearHistory.mutate({ confirmed: true });
+  };
 
   if (statsQuery.isLoading) {
     return (
@@ -226,13 +254,23 @@ function ClickStatsCard() {
             Acompanhe todos os cliques do site, organizados por página e ação.
           </p>
         </div>
-        <div className="rounded-xl bg-rd-pink px-4 py-2 text-right">
-          <span className="block text-[11px] font-semibold uppercase tracking-wide text-rd-body">
-            Cliques registrados
-          </span>
-          <strong className="text-[22px] leading-none text-rd-dark">
-            {stats?.totalClicks ?? 0}
-          </strong>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleClearHistory}
+            disabled={clearHistory.isPending || (stats?.totalClicks ?? 0) === 0}
+            className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-[12px] font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50">
+            {clearHistory.isPending ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            Limpar cliques
+          </button>
+          <div className="rounded-xl bg-rd-pink px-4 py-2 text-right">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-rd-body">
+              Cliques registrados
+            </span>
+            <strong className="text-[22px] leading-none text-rd-dark">
+              {stats?.totalClicks ?? 0}
+            </strong>
+          </div>
         </div>
       </div>
 

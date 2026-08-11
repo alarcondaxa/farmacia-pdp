@@ -453,6 +453,15 @@ export async function recordClick(data: {
   });
 }
 
+/** Remove definitivamente o histórico de eventos de clique da loja. */
+export async function clearClickHistory() {
+  const db = await getMongo();
+  if (!db) return 0;
+
+  const result = await db.collection("clicks").deleteMany({});
+  return result.deletedCount;
+}
+
 /**
  * Retorna o funil de cliques da loja, com totais por página e por elemento.
  * O `pageUrl` é gravado em cada evento para que o painel mostre exatamente

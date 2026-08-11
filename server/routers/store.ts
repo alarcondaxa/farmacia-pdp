@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildPixPayload } from "@shared/pix";
 import {
   claimOrderPayment,
+  clearClickHistory,
   clearCapiSent,
   countOrdersByIp,
   createOrder,
@@ -698,6 +699,14 @@ export const storeRouter = router({
     clickStats: adminProcedure.query(async () => {
       return getClickStats();
     }),
+
+    /** Apaga definitivamente os dados de navegação após confirmação explícita. */
+    clearClickHistory: adminProcedure
+      .input(z.object({ confirmed: z.literal(true) }))
+      .mutation(async () => {
+        const deleted = await clearClickHistory();
+        return { success: true, deleted };
+      }),
 
     /** Lista completa de pedidos com todos os dados informados pelo cliente. */
     orders: adminProcedure.query(async () => {
