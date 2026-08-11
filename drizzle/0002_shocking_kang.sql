@@ -1,0 +1,2 @@
+ALTER TABLE `orders` MODIFY COLUMN `status` enum('pending','awaiting_confirmation','paid','shipped','canceled') NOT NULL DEFAULT 'pending';--> statement-breakpoint
+ALTER TABLE `orders` ADD `paymentClaimedAt` timestamp;

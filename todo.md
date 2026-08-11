@@ -1,0 +1,107 @@
+# Project TODO
+
+- [x] Réplica da PDP (header, mega-menu, breadcrumb, bloco do produto, descrição, carrosséis, bula, footer)
+- [x] Preços por dosagem (2,5mg a 15mg) com troca dinâmica
+- [x] Renomear produto para T.G e trocar canetas por seringas
+- [x] Remover caixa "Venda sob prescrição médica"
+- [x] Imagens da embalagem T.G por dosagem na galeria
+- [x] Remover "Compra rápida com receita" e login do header
+- [x] Aviso de promoção válida somente nesta página
+- [x] Frete grátis para todo o Brasil (substituindo cálculo por CEP)
+- [x] Seletor de quantidade com total calculado
+- [x] Desconto de 40% só hoje com contador
+- [x] Carrinho persistente com contador no header
+- [x] Checkout com dados básicos, Pix e cartão em até 3x
+- [x] Corrigir scroll: páginas abrem no topo
+- [x] Upgrade para full-stack (banco de dados + backend)
+- [x] Tabelas orders e settings no banco
+- [x] Busca automática de endereço por CEP (ViaCEP)
+- [x] Pedidos salvos no banco com todos os dados do cliente
+- [x] Geração de BR Code Pix (EMV/CRC16) com testes vitest
+- [x] QR Code e Pix copia-e-cola na confirmação do pedido
+- [x] Painel admin em /admin protegido por login e papel admin
+- [x] Configuração da chave Pix, recebedor, cidade e WhatsApp no admin
+- [x] Lista de pedidos no admin com busca, status e exclusão
+- [x] Fluxo de pagamento preparado para gateway (bloqueado: aguardando credenciais do usuário)
+- [x] Bloco "Já paguei" permanece visível após copiar o código Pix
+- [x] Alterar o desconto de 40% para 43% em todo o site
+- [x] Redesenhar o bloco de oferta com destaque maior (selo, economia, contador)
+- [x] Barra fixa de compra no mobile com preço e CTA
+- [x] Indicador de pessoas vendo a página em tempo real
+- [x] Indicador de estoque limitado no preço promocional (com barra de progresso)
+- [x] Estoque promocional distinto por dosagem (não repetir o mesmo número)
+- [x] Estoque por dosagem persistido no banco, editável no painel admin
+- [x] Baixa automática de estoque ao criar pedido, com bloqueio quando esgota
+- [x] Registro do IP do cliente em cada pedido
+- [x] Limite de compras por IP configurável no painel, bloqueando excedentes
+- [x] PDP e checkout mostrando disponibilidade real vinda do servidor
+- [x] Testes vitest cobrindo baixa de estoque e limite por IP
+- [x] Estoque devolvido ao cancelar ou apagar pedido
+- [x] Dosagens esgotadas desabilitadas nos chips e nos botões de compra
+- [x] Resumo do checkout exibindo estoque real por dosagem e bloqueando itens acima do disponível
+- [x] Carrinho e contexto travando a quantidade total por dosagem no estoque real
+- [x] Formulário de cartão restaurado no checkout (nome, número, validade, CVV, parcelas)
+- [x] Pedido de cartão salvo integralmente e recusado no final, com opção de pagar no Pix
+- [x] CEP obrigatório na primeira visita, com modal de abertura
+- [x] Aviso de estoque citando a cidade/UF do CEP informado
+- [x] Testes vitest do limite por dosagem e do pedido de cartão recusado (44 testes)
+- [x] Selos de confiança abaixo do botão de compra
+- [x] Reforço de urgência e economia no carrinho e no checkout
+- [x] Chamada de upsell para levar 2 unidades com economia calculada
+- [x] Teste vitest cobrindo o desconto de 43% e formatação de preço
+- [x] Notificação ao dono da loja a cada novo pedido
+- [x] Testes vitest do BR Code Pix e das rotas da loja (12 testes)
+- [x] Redesenhar a tela de pagamento Pix com foco em conversão (QR em destaque, passos numerados, contador, selos de confiança)
+- [x] Formulário de cartão com nome impresso, número, validade e CVV
+- [x] Validação de cartão (Luhn, bandeira, validade futura, CVV) sem armazenar dados sensíveis
+- [x] Guardar apenas bandeira, 4 últimos dígitos e titular do cartão no pedido
+- [x] Testes vitest das validações de cartão e da não persistência de dados sensíveis (26 testes)
+- [x] Botão "Já paguei" após copiar o código Pix, marcando o pedido como aviso de pagamento
+- [x] Novo status "Cliente informou pagamento" destacado no painel admin com horário e confirmação em 1 clique
+- [x] Aviso na opção Cartão de que a promoção de 40% vale apenas no Pix, com comparativo e atalho para trocar
+- [x] Salvar os dados do cliente e direcionar o fluxo do cartão para o Pix
+- [x] Testes vitest da rota de aviso de pagamento (28 testes)
+- [x] Modal de CEP obrigatório na abertura, com CEP reaproveitado no checkout
+- [x] Novo status "Cartão recusado" no painel admin, com retomada via Pix sem redigitar dados
+- [x] Suíte completa revalidada após as mudanças (44 testes)
+
+- [x] Auditoria completa do código: frontend, backend, schema e testes
+- [x] Corrigir bugs encontrados na auditoria
+- [x] BUG: cartão enviava preço com desconto ao servidor (total divergente da tela)
+- [x] BUG: referência do pedido derivada de max(id)+1 (risco de colisão)
+- [x] BUG: switchToPix permitia gerar Pix para pedido cancelado
+- [x] BUG: restoreStock podia estourar o tamanho do lote (barra > 100%)
+- [x] BUG: updateStatus/deleteOrder carregavam todos os pedidos para achar um id
+- [x] BUG: modal de CEP aparecia no painel /admin e na confirmação do pedido
+- [x] BUG: claimPayment em pedido de cartão recusado dava falso sucesso
+- [x] Tela de cartão recusado mostrando a economia real do Pix
+- [x] Índices em orders (clientIp, createdAt) para o limite por IP e a listagem
+- [x] Proteção contra JSON de itens corrompido nas rotas do pedido
+- [x] Retry do CEP no modal de abertura após erro
+- [x] Configuração de pixels no painel (Meta, GA4, Google Ads, GTM, CAPI)
+- [x] Rota pública de tracking expondo somente IDs públicos
+- [x] Eventos do funil: view_item, add_to_cart, begin_checkout, add_payment_info
+- [x] Conversão de compra com transaction_id (Meta, GA4 e Google Ads)
+- [x] Testes das rotas de tracking (6 casos)
+- [x] Teto disponível ≤ lote ao salvar estoque no painel
+- [x] Validação das tags no navegador (scripts injetados, sem erro no console)
+- [x] Tabela/settings para IDs de pixels (Meta Pixel, GA4, Google Ads)
+- [x] Campos no painel admin para configurar pixels e conversão do Google Ads
+- [x] Injeção dinâmica dos scripts de Meta Pixel e Google (gtag) no site
+- [x] Eventos de funil: ViewContent, AddToCart, InitiateCheckout, Purchase
+- [x] Deduplicação de evento de compra (não disparar duas vezes no mesmo pedido)
+- [x] Testes vitest das rotas de configuração de pixels e do disparo de eventos
+- [x] add_to_cart também no caminho "Comprar agora" (hoje só no "Adicionar")
+- [x] Purchase apenas em pedido confirmado; pedido criado dispara evento próprio
+- [x] Testes vitest de tracking.ts (eventos, mapeamento e deduplicação)
+- [x] "Comprar agora" segue para o carrinho mesmo com o lote já reservado
+
+## Conversions API do Meta e cobrança por WhatsApp
+
+- [ ] Envio server-side da compra (Purchase) pela Conversions API ao marcar pago
+- [ ] Hash SHA-256 dos dados do cliente (e-mail, telefone, nome, CPF) antes do envio
+- [ ] event_id igual ao do pixel, para o Meta desduplicar navegador x servidor
+- [ ] Registro no pedido de que a conversão já foi enviada (não repetir)
+- [ ] Botão no painel para enviar a cobrança Pix ao cliente pelo WhatsApp
+- [ ] Mensagem pronta com valor, referência e código Pix copia-e-cola
+- [ ] Testes vitest da Conversions API e do link de WhatsApp
