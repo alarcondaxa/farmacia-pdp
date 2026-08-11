@@ -11,14 +11,8 @@ import "./index.css";
 const queryClient = new QueryClient();
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
-  if (!(error instanceof TRPCClientError)) return;
-  if (typeof window === "undefined") return;
-
-  const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
-
-  if (!isUnauthorized) return;
-
-  startLogin();
+  // Login sem senha: desabilitar redirecionamento automático
+  return;
 };
 
 queryClient.getQueryCache().subscribe(event => {

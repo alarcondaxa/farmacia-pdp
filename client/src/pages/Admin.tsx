@@ -1003,41 +1003,7 @@ function OrdersTableInner() {
 }
 
 export default function Admin() {
-  const { user, loading, isAuthenticated, logout } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-rd-bg">
-        <Loader2 size={24} className="animate-spin text-rd-action" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <LoginGate onLogin={() => startLogin()} />;
-  }
-
-  if (user?.role !== "admin") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-rd-bg px-4">
-        <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center">
-          <ShieldAlert size={32} className="mx-auto text-rd-action" />
-          <h1 className="mt-4 text-[18px] font-bold text-rd-ink">
-            Acesso restrito
-          </h1>
-          <p className="mt-2 text-[14px] text-rd-body">
-            Esta conta ({user?.email ?? user?.name ?? "sem e-mail"}) não tem
-            permissão de administrador nesta loja.
-          </p>
-          <button
-            onClick={() => logout()}
-            className="rd-press mt-5 inline-flex items-center gap-2 rounded-full border border-rd-line2 px-5 py-2 text-[14px] font-semibold text-rd-body hover:border-rd-action hover:text-rd-action">
-            <LogOut size={15} /> Sair
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const { user } = useAuth();
 
   return (
     <div className="min-h-screen bg-rd-bg">
@@ -1051,13 +1017,8 @@ export default function Admin() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-[13px] text-rd-body">
-              {user?.name ?? user?.email}
+              Administrador
             </span>
-            <button
-              onClick={() => logout()}
-              className="rd-press inline-flex items-center gap-1.5 rounded-full border border-rd-line2 px-4 py-1.5 text-[13px] font-semibold text-rd-body hover:border-rd-action hover:text-rd-action">
-              <LogOut size={14} /> Sair
-            </button>
           </div>
         </div>
       </header>
