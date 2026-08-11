@@ -48,14 +48,24 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath =
-    process.env.NODE_ENV === "development"
-      ? path.resolve(import.meta.dirname, "../..", "dist", "public")
-      : path.resolve(import.meta.dirname, "public");
-  if (!fs.existsSync(distPath)) {
+  // Na Vercel os arquivos estáticos são servidos pela CDN, então a função
+  // serverless apenas responde às rotas de API.
+  if (process.env.VERCEL) {
+    return;
+  }
+
+  const candidates = [
+    path.resolve(import.meta.dirname, "public"),
+    path.resolve(import.meta.dirname, "../..", "dist", "public"),
+    path.resolve(process.cwd(), "dist", "public"),
+  ];
+  const distPath = candidates.find((p) => fs.existsSync(p));
+
+  if (!distPath) {
     console.error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
+      `Could not find the build directory, make sure to build the client first`
     );
+    return;
   }
 
   app.use(express.static(distPath));

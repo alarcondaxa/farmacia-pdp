@@ -1,6 +1,11 @@
-import { createExpressApp } from "../server/_core/index";
+import { createExpressApp } from "../server/_core/index.js";
+
+let cached: any = null;
 
 export default async function handler(req: any, res: any) {
-  const { app } = await createExpressApp();
-  return app(req, res);
+  if (!cached) {
+    const { app } = await createExpressApp();
+    cached = app;
+  }
+  return cached(req, res);
 }
