@@ -99,6 +99,8 @@ export const SETTING_KEYS = [
   "maxOrdersPerIp",
   // Janela em horas considerada no limite por IP (0 = sem janela, vale sempre).
   "ipWindowHours",
+  /** Quando ativo, a rota inicial mostra somente uma tela branca. */
+  "homepagePaused",
   /* ---- Rastreamento de conversões ---- */
   "metaPixelId",
   /** Código-base colado no painel; o servidor extrai e usa o Pixel ID. */

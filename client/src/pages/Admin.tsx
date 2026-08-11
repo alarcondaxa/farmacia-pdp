@@ -367,6 +367,7 @@ function PixSettingsCard({ area }: { area: "payments" | "marketing" }) {
     storeWhatsapp: "",
     maxOrdersPerIp: 2,
     ipWindowHours: 24,
+    homepagePaused: false,
     trackingEnabled: true,
     metaPixelId: "",
     metaPixelCode: "",
@@ -391,6 +392,7 @@ function PixSettingsCard({ area }: { area: "payments" | "marketing" }) {
       storeWhatsapp: settingsQuery.data.storeWhatsapp,
       maxOrdersPerIp: settingsQuery.data.maxOrdersPerIp,
       ipWindowHours: settingsQuery.data.ipWindowHours,
+      homepagePaused: settingsQuery.data.homepagePaused,
       trackingEnabled: settingsQuery.data.trackingEnabled,
       metaPixelId: settingsQuery.data.metaPixelId,
       metaPixelCode: settingsQuery.data.metaPixelCode,
@@ -562,6 +564,35 @@ function PixSettingsCard({ area }: { area: "payments" | "marketing" }) {
             </span>
           </label>
         </div>
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-[14px] font-bold text-rd-ink">
+              Página inicial em pausa
+            </h3>
+            <p className="mt-1 max-w-xl text-[12.5px] text-rd-body">
+              Quando ativada, a página inicial fica totalmente branca. O painel,
+              os pedidos e as demais rotas continuam disponíveis normalmente.
+            </p>
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-white px-3 py-2 text-[12.5px] font-semibold text-rd-ink shadow-sm">
+            <input
+              type="checkbox"
+              checked={form.homepagePaused}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, homepagePaused: e.target.checked }))
+              }
+              className="h-4 w-4 accent-[#EB3C4D]" />
+            {form.homepagePaused ? "Pausa ativa" : "Ativar pausa"}
+          </label>
+        </div>
+        {form.homepagePaused && (
+          <p className="mt-3 rounded-lg bg-white px-3 py-2 text-[12px] font-medium text-amber-800">
+            A vitrine ficará em branco logo após salvar esta configuração.
+          </p>
+        )}
       </div>
         </>
       )}

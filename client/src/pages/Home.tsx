@@ -10,8 +10,19 @@ import ProductCarousel from "@/components/ProductCarousel";
 import LeafletSection from "@/components/LeafletSection";
 import Footer from "@/components/Footer";
 import { alsoBought, similarProducts } from "@/data/catalog";
+import { trpc } from "@/lib/trpc";
 
 export default function Home() {
+  const homepageStatus = trpc.store.homepageStatus.useQuery(undefined, {
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+  });
+
+  // A pausa intencionalmente não mostra aviso, cabeçalho ou conteúdo.
+  if (homepageStatus.data?.paused) {
+    return <div className="min-h-screen w-full bg-white" aria-hidden="true" />;
+  }
+
   return (
     <div className="min-h-screen bg-rd-bg">
       <Header />

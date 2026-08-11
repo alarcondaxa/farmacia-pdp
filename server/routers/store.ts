@@ -279,6 +279,12 @@ export const storeRouter = router({
     return { configured: Boolean(settings.pixKey) };
   }),
 
+  /** Estado público de pausa: a vitrine consulta apenas este booleano. */
+  homepageStatus: publicProcedure.query(async () => {
+    const settings = await getSettings();
+    return { paused: settings.homepagePaused === "1" };
+  }),
+
   /**
    * IDs de rastreamento visíveis ao navegador. Só devolve os identificadores
    * públicos (que já ficariam expostos no HTML de qualquer site) — o token da
@@ -715,6 +721,7 @@ export const storeRouter = router({
           settings.maxOrdersPerIp || DEFAULT_MAX_ORDERS_PER_IP,
         ),
         ipWindowHours: Number(settings.ipWindowHours ?? DEFAULT_IP_WINDOW_HOURS),
+        homepagePaused: settings.homepagePaused === "1",
         /* Rastreamento de conversões */
         trackingEnabled: (settings.trackingEnabled ?? "1") !== "0",
         metaPixelId: settings.metaPixelId ?? "",
@@ -741,6 +748,8 @@ export const storeRouter = router({
           maxOrdersPerIp: z.number().int().min(0).max(50),
           /** 0 aplica o limite sem janela de tempo (vale para sempre). */
           ipWindowHours: z.number().int().min(0).max(8760),
+          /** Oculta a vitrine sem afetar pedidos, estoque ou o painel. */
+          homepagePaused: z.boolean().default(false),
           /* ---- Rastreamento de conversões ---- */
           trackingEnabled: z.boolean().default(true),
           /** Meta Pixel: 15 ou 16 dígitos. */
@@ -820,6 +829,7 @@ export const storeRouter = router({
           storeWhatsapp: input.storeWhatsapp?.trim() ?? "",
           maxOrdersPerIp: String(input.maxOrdersPerIp),
           ipWindowHours: String(input.ipWindowHours),
+          homepagePaused: input.homepagePaused ? "1" : "0",
           trackingEnabled: input.trackingEnabled ? "1" : "0",
           metaPixelId: parsedMetaPixelId,
           metaPixelCode: input.metaPixelCode,

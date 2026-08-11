@@ -15,6 +15,10 @@ import { trpc } from "@/lib/trpc";
 export default function CepGate() {
   const { needsCep, setLocation } = useCustomerLocation();
   const [path] = useLocation();
+  const homepageStatus = trpc.store.homepageStatus.useQuery(undefined, {
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+  });
   const [cep, setCep] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -53,7 +57,9 @@ export default function CepGate() {
   const exemptRoutes = ["/admin", "/pedido-confirmado"];
   const exempt = exemptRoutes.some(route => path.startsWith(route));
 
-  if (!needsCep || exempt) return null;
+  // A pausa é limitada à vitrine: checkout, confirmação e painel continuam operando.
+  const homepagePaused = path === "/" && homepageStatus.data?.paused;
+  if (!needsCep || exempt || homepagePaused) return null;
 
   const error = submitted && cepQuery.error ? cepQuery.error.message : "";
 
