@@ -7,7 +7,6 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/auth/(.*)", "destination": "/api/index" },
-    { "source": "/manus-storage/(.*)", "destination": "/api/index" },
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|produtos/|__manus__/).*)", "destination": "/index.html" }
   ]
 }
