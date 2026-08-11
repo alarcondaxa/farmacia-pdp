@@ -101,7 +101,11 @@ export const SETTING_KEYS = [
   "ipWindowHours",
   /* ---- Rastreamento de conversões ---- */
   "metaPixelId",
+  /** Código-base colado no painel; o servidor extrai e usa o Pixel ID. */
+  "metaPixelCode",
   "metaCapiToken",
+  /** Código temporário do Events Manager para validar a Conversions API. */
+  "metaTestEventCode",
   "ga4MeasurementId",
   "googleAdsId",
   "googleAdsPurchaseLabel",

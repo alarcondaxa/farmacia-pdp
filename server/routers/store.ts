@@ -95,6 +95,30 @@ const DEFAULT_MAX_ORDERS_PER_IP = 2;
 const DEFAULT_IP_WINDOW_HOURS = 24;
 
 /**
+ * Aceita tanto o ID numérico quanto o código-base completo copiado do Events
+ * Manager. O site sempre injeta a tag padrão a partir do ID; por isso não
+ * executamos arbitrariamente o JavaScript colado no painel.
+ */
+function extractMetaPixelId(pixelId: string, pixelCode: string): string {
+  const explicitId = pixelId.replace(/\D/g, "");
+  if (/^\d{15,16}$/.test(explicitId)) return explicitId;
+
+  const patterns = [
+    /fbq\(\s*["']init["']\s*,\s*["']?(\d{15,16})/i,
+    /(?:pixelId|pixel_id)\s*[:=]\s*["']?(\d{15,16})/i,
+    /\bid[=:]["']?(\d{15,16})/i,
+    /\b(\d{15,16})\b/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = pixelCode.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+
+  return "";
+}
+
+/**
  * Envia a compra de um pedido pago ao Meta pela Conversions API.
  *
  * Roda no servidor justamente para recuperar as conversões que o pixel do
@@ -157,6 +181,9 @@ async function sendOrderConversion(
         pixelId,
         accessToken,
         testEventCode: settings.metaTestEventCode || undefined,
+        sourceUrl:
+          process.env.PUBLIC_SITE_URL ||
+          "https://farmacia-pdp.vercel.app/pedido-confirmado",
       },
     );
 
@@ -691,7 +718,9 @@ export const storeRouter = router({
         /* Rastreamento de conversões */
         trackingEnabled: (settings.trackingEnabled ?? "1") !== "0",
         metaPixelId: settings.metaPixelId ?? "",
-        metaCapiToken: settings.metaCapiToken ?? "",
+        metaPixelCode: settings.metaPixelCode ?? "",
+        // O token nunca volta para o navegador; expomos apenas se há um salvo.
+        hasMetaCapiToken: Boolean(settings.metaCapiToken),
         metaTestEventCode: settings.metaTestEventCode ?? "",
         ga4MeasurementId: settings.ga4MeasurementId ?? "",
         googleAdsId: settings.googleAdsId ?? "",
@@ -721,7 +750,14 @@ export const storeRouter = router({
             .regex(/^\d{15,16}$/, "O ID do Meta Pixel tem 15 ou 16 dígitos")
             .or(z.literal(""))
             .default(""),
+          /** Código-base completo copiado do Events Manager (opcional). */
+          metaPixelCode: z.string().trim().max(50000).default(""),
+          /**
+           * Token novo da CAPI. Se vier vazio, o token existente é preservado
+           * sem nunca ser devolvido ao navegador.
+           */
           metaCapiToken: z.string().trim().max(400).default(""),
+          clearMetaCapiToken: z.boolean().default(false),
           /** Código TEST do Events Manager, usado só durante a validação. */
           metaTestEventCode: z.string().trim().max(40).default(""),
           /** GA4: formato G-XXXXXXXXXX. */
@@ -760,6 +796,22 @@ export const storeRouter = router({
           });
         }
 
+        const parsedMetaPixelId = extractMetaPixelId(
+          input.metaPixelId,
+          input.metaPixelCode,
+        );
+        if ((input.metaPixelId || input.metaPixelCode) && !parsedMetaPixelId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Não foi possível encontrar um Meta Pixel ID válido no código informado",
+          });
+        }
+
+        const previousSettings = await getSettings();
+        const metaCapiToken = input.clearMetaCapiToken
+          ? ""
+          : input.metaCapiToken || previousSettings.metaCapiToken || "";
+
         await saveSettings({
           pixKey: input.pixKey.trim(),
           pixKeyType: input.pixKeyType,
@@ -769,8 +821,9 @@ export const storeRouter = router({
           maxOrdersPerIp: String(input.maxOrdersPerIp),
           ipWindowHours: String(input.ipWindowHours),
           trackingEnabled: input.trackingEnabled ? "1" : "0",
-          metaPixelId: input.metaPixelId,
-          metaCapiToken: input.metaCapiToken,
+          metaPixelId: parsedMetaPixelId,
+          metaPixelCode: input.metaPixelCode,
+          metaCapiToken,
           metaTestEventCode: input.metaTestEventCode,
           ga4MeasurementId: input.ga4MeasurementId.toUpperCase(),
           googleAdsId: input.googleAdsId.toUpperCase(),

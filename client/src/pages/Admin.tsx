@@ -257,9 +257,15 @@ function ClickStatsCard() {
 function PixSettingsCard() {
   const utils = trpc.useUtils();
   const settingsQuery = trpc.store.admin.settings.useQuery();
+  const [hasMetaCapiToken, setHasMetaCapiToken] = useState(false);
   const save = trpc.store.admin.saveSettings.useMutation({
-    onSuccess: () => {
-      toast.success("Configurações do Pix salvas");
+    onSuccess: (_result, values) => {
+      setHasMetaCapiToken((currentlySaved) =>
+        values.clearMetaCapiToken
+          ? false
+          : currentlySaved || Boolean(values.metaCapiToken.trim()),
+      );
+      toast.success("Configurações salvas");
       utils.store.admin.settings.invalidate();
       utils.store.pixStatus.invalidate();
     },
@@ -277,7 +283,10 @@ function PixSettingsCard() {
     ipWindowHours: 24,
     trackingEnabled: true,
     metaPixelId: "",
+    metaPixelCode: "",
+    // Campo vazio preserva o token que já esteja salvo no servidor.
     metaCapiToken: "",
+    clearMetaCapiToken: false,
     metaTestEventCode: "",
     ga4MeasurementId: "",
     googleAdsId: "",
@@ -298,13 +307,17 @@ function PixSettingsCard() {
       ipWindowHours: settingsQuery.data.ipWindowHours,
       trackingEnabled: settingsQuery.data.trackingEnabled,
       metaPixelId: settingsQuery.data.metaPixelId,
-      metaCapiToken: settingsQuery.data.metaCapiToken,
+      metaPixelCode: settingsQuery.data.metaPixelCode,
+      // O token nunca é devolvido ao navegador.
+      metaCapiToken: "",
+      clearMetaCapiToken: false,
       metaTestEventCode: settingsQuery.data.metaTestEventCode,
       ga4MeasurementId: settingsQuery.data.ga4MeasurementId,
       googleAdsId: settingsQuery.data.googleAdsId,
       googleAdsPurchaseLabel: settingsQuery.data.googleAdsPurchaseLabel,
       gtmId: settingsQuery.data.gtmId,
     });
+    setHasMetaCapiToken(settingsQuery.data.hasMetaCapiToken);
   }, [settingsQuery.data]);
 
   const submit = () => {
@@ -487,9 +500,26 @@ function PixSettingsCard() {
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-[13px] font-semibold text-rd-body">
+              Código-base do Meta Pixel (opcional)
+            </span>
+            <textarea
+              value={form.metaPixelCode}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, metaPixelCode: e.target.value }))
+              }
+              rows={4}
+              placeholder={'Cole aqui o código completo do Meta Pixel, por exemplo: fbq(\'init\', \'1234567890123456\')'}
+              className="w-full resize-y rounded-xl border border-rd-line2 px-3 py-2.5 font-mono text-[12px] text-rd-ink outline-none focus:border-rd-action" />
+            <span className="mt-1 block text-[11.5px] text-rd-mute">
+              O sistema identifica o Pixel ID automaticamente e instala a tag padrão com segurança. Não é necessário editar o código do site.
+            </span>
+          </label>
+
           <label className="block">
             <span className="mb-1 block text-[13px] font-semibold text-rd-body">
-              Meta Pixel ID (Facebook/Instagram)
+              Meta Pixel ID (alternativa ao código completo)
             </span>
             <input
               value={form.metaPixelId}
@@ -578,8 +608,13 @@ function PixSettingsCard() {
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-[13px] font-semibold text-rd-body">
-              Token da Conversions API do Meta (opcional)
+            <span className="mb-1 flex items-center gap-2 text-[13px] font-semibold text-rd-body">
+              Token da Conversions API do Meta
+              {hasMetaCapiToken && (
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+                  Token salvo
+                </span>
+              )}
             </span>
             <input
               value={form.metaCapiToken}
@@ -587,12 +622,24 @@ function PixSettingsCard() {
                 setForm((f) => ({ ...f, metaCapiToken: e.target.value }))
               }
               type="password"
-              placeholder="EAAG..."
+              autoComplete="new-password"
+              placeholder={hasMetaCapiToken ? "Cole outro token apenas para substituir" : "EAAG..."}
               className="w-full rounded-xl border border-rd-line2 px-3 py-2.5 text-[14px] text-rd-ink outline-none focus:border-rd-action" />
             <span className="mt-1 block text-[11.5px] text-rd-mute">
-              Usado para enviar a compra pelo servidor, sem depender do
-              navegador. Fica guardado apenas no servidor.
+              Ao marcar o pedido como pago, a compra é enviada pelo servidor ao Meta. Um token já salvo nunca aparece no painel.
             </span>
+            {hasMetaCapiToken && (
+              <span className="mt-2 flex items-center gap-2 text-[11.5px] text-rd-mute">
+                <input
+                  type="checkbox"
+                  checked={form.clearMetaCapiToken}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, clearMetaCapiToken: e.target.checked }))
+                  }
+                  className="h-3.5 w-3.5 accent-[#EB3C4D]" />
+                Remover o token salvo
+              </span>
+            )}
           </label>
 
           <label className="block">
@@ -1049,27 +1096,29 @@ function OrdersTableInner() {
                       </select>
                     </td>
                     <td className="py-3">
-                      <div className="flex items-center gap-1">
-                        {/* Cobrança Pix pronta: abre o WhatsApp do cliente com
-                            valor, referência e código copia-e-cola no texto. */}
-                        <button
-                          onClick={() =>
-                            whatsappCharge.mutate({ id: order.id })
-                          }
-                          disabled={whatsappCharge.isPending}
-                          title={
-                            order.chargeSentAt
-                              ? `Cobrança enviada em ${new Date(order.chargeSentAt).toLocaleString("pt-BR")}`
-                              : "Enviar cobrança Pix por WhatsApp"
-                          }
-                          className={`rd-press rounded-lg p-1.5 disabled:opacity-50 ${
-                            order.chargeSentAt
-                              ? "text-emerald-600 hover:bg-emerald-50"
-                              : "text-rd-mute hover:bg-emerald-50 hover:text-emerald-600"
-                          }`}
-                          aria-label="Enviar cobrança por WhatsApp">
-                          <MessageCircle size={15} />
-                        </button>
+                      <div className="flex items-center gap-2">
+                        {/* A única ação de cobrança é manual: abre a conversa
+                            do cliente com o Pix pronto, sem disparo automático. */}
+                        {(["pending", "awaiting_confirmation", "card_declined"] as StatusValue[]).includes(
+                          order.status as StatusValue,
+                        ) && (
+                          <button
+                            onClick={() => whatsappCharge.mutate({ id: order.id })}
+                            disabled={whatsappCharge.isPending}
+                            title={
+                              order.chargeSentAt
+                                ? `Última cobrança aberta em ${new Date(order.chargeSentAt).toLocaleString("pt-BR")}`
+                                : "Abrir cobrança Pix no WhatsApp"
+                            }
+                            className="rd-press inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-1.5 text-[12px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
+                            {whatsappCharge.isPending ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <MessageCircle size={14} />
+                            )}
+                            Cobrar via WhatsApp
+                          </button>
+                        )}
                       <button
                         onClick={() => {
                           if (
@@ -1127,31 +1176,12 @@ function OrdersTableInner() {
                           </div>
                         )}
 
-                        {/* Ação principal de cobrança: abre o WhatsApp com a
-                            mensagem pronta (valor, referência e código Pix). */}
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <button
-                            onClick={() =>
-                              whatsappCharge.mutate({ id: order.id })
-                            }
-                            disabled={whatsappCharge.isPending}
-                            className="rd-press inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-[13px] font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
-                            {whatsappCharge.isPending ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <MessageCircle size={14} />
-                            )}
-                            Enviar cobrança por WhatsApp
-                          </button>
-                          {order.chargeSentAt && (
-                            <span className="text-[12px] text-rd-mute">
-                              Última cobrança enviada em{" "}
-                              {new Date(order.chargeSentAt).toLocaleString(
-                                "pt-BR",
-                              )}
-                            </span>
-                          )}
-                        </div>
+                        {order.chargeSentAt && (
+                          <p className="mt-3 text-[12px] text-rd-mute">
+                            Última cobrança aberta no WhatsApp em{" "}
+                            {new Date(order.chargeSentAt).toLocaleString("pt-BR")}
+                          </p>
+                        )}
                         {order.capiSentAt && (
                           <p className="mt-2 text-[12px] text-emerald-700">
                             Conversão enviada ao Meta em{" "}
