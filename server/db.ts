@@ -463,12 +463,60 @@ export async function getClickStats() {
   const [result] = await db
     .collection("clicks")
     .aggregate([
+      // Registros antigos podiam guardar a URL completa e os atuais guardam a
+      // rota. Normalizamos os dois formatos antes de agrupar, para que
+      // `https://dominio/carrinho` e `/carrinho` apareçam como uma só página.
+      {
+        $set: {
+          normalizedPageUrl: {
+            $let: {
+              vars: { source: { $ifNull: ["$pageUrl", "/"] } },
+              in: {
+                $let: {
+                  vars: {
+                    withoutHost: {
+                      $cond: [
+                        { $regexMatch: { input: "$$source", regex: "^https?://" } },
+                        {
+                          $ifNull: [
+                            {
+                              $arrayElemAt: [
+                                {
+                                  $getField: {
+                                    field: "captures",
+                                    input: {
+                                      $regexFind: {
+                                        input: "$$source",
+                                        regex: "^https?://[^/]+(/[^?#]*)?",
+                                      },
+                                    },
+                                  },
+                                },
+                                0,
+                              ],
+                            },
+                            "/",
+                          ],
+                        },
+                        "$$source",
+                      ],
+                    },
+                  },
+                  in: {
+                    $arrayElemAt: [{ $split: ["$$withoutHost", "?"] }, 0],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       {
         $facet: {
           pages: [
             {
               $group: {
-                _id: "$pageUrl",
+                _id: "$normalizedPageUrl",
                 total: { $sum: 1 },
                 elementIds: { $addToSet: "$elementId" },
                 lastClick: { $max: "$createdAt" },
@@ -488,7 +536,7 @@ export async function getClickStats() {
           elements: [
             {
               $group: {
-                _id: { pageUrl: "$pageUrl", elementId: "$elementId" },
+                _id: { pageUrl: "$normalizedPageUrl", elementId: "$elementId" },
                 elementText: { $max: "$elementText" },
                 total: { $sum: 1 },
                 lastClick: { $max: "$createdAt" },
