@@ -31,10 +31,7 @@
       "dest": "/$1",
       "continue": true
     },
-    {
-      "src": "/(.*)",
-      "handle": "filesystem"
-    },
+    { "handle": "filesystem" },
     {
       "src": "/(.*)",
       "dest": "/index.html"
