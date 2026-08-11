@@ -18,8 +18,9 @@ export default function Home() {
     refetchOnWindowFocus: true,
   });
 
-  // A pausa intencionalmente não mostra aviso, cabeçalho ou conteúdo.
-  if (homepageStatus.data?.paused) {
+  // A rota começa branca e só libera a vitrine depois da confirmação do servidor.
+  // Assim, quando a pausa estiver ativa, nenhum conteúdo aparece antes da tela branca.
+  if (homepageStatus.isLoading || homepageStatus.data?.paused) {
     return <div className="min-h-screen w-full bg-white" aria-hidden="true" />;
   }
 

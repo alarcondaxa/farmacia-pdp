@@ -57,9 +57,11 @@ export default function CepGate() {
   const exemptRoutes = ["/admin", "/pedido-confirmado"];
   const exempt = exemptRoutes.some(route => path.startsWith(route));
 
-  // A pausa é limitada à vitrine: checkout, confirmação e painel continuam operando.
+  // Na vitrine, o modal só é liberado depois da confirmação de que a pausa está desligada.
+  // Isso evita que qualquer conteúdo apareça antes da tela branca quando ela está ativa.
+  const checkingHomepagePause = path === "/" && homepageStatus.isLoading;
   const homepagePaused = path === "/" && homepageStatus.data?.paused;
-  if (!needsCep || exempt || homepagePaused) return null;
+  if (!needsCep || exempt || checkingHomepagePause || homepagePaused) return null;
 
   const error = submitted && cepQuery.error ? cepQuery.error.message : "";
 
