@@ -78,7 +78,7 @@ function vitePluginManusDebugCollector(): any {
   return {
     name: "manus-debug-collector",
 
-    transformIndexHtml(html) {
+    transformIndexHtml(html: any) {
       if (process.env.NODE_ENV === "production") {
         return html;
       }
@@ -99,7 +99,7 @@ function vitePluginManusDebugCollector(): any {
 
     configureServer(server: ViteDevServer) {
       // POST /__manus__/logs: Browser sends logs (written directly to files)
-      server.middlewares.use("/__manus__/logs", (req, res, next) => {
+      server.middlewares.use("/__manus__/logs", (req: any, res: any, next: any) => {
         if (req.method !== "POST") {
           return next();
         }
