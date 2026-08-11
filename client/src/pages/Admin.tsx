@@ -108,6 +108,92 @@ function pageLabel(pageUrl: string) {
   return labels[path] ?? path;
 }
 
+type AdminArea = "overview" | "orders" | "stock" | "payments" | "marketing" | "analytics";
+
+const ADMIN_AREAS: { id: AdminArea; label: string; description: string }[] = [
+  { id: "overview", label: "Visão geral", description: "O que precisa da sua atenção" },
+  { id: "orders", label: "Pedidos", description: "Vendas, pagamentos e cobranças" },
+  { id: "stock", label: "Estoque", description: "Disponibilidade por dosagem" },
+  { id: "payments", label: "Pix e regras", description: "Recebimento e proteção da loja" },
+  { id: "marketing", label: "Marketing", description: "Meta, Google e conversões" },
+  { id: "analytics", label: "Análises", description: "Cliques e comportamento do cliente" },
+];
+
+function OverviewCard({ onNavigate }: { onNavigate: (area: AdminArea) => void }) {
+  const ordersQuery = trpc.store.admin.orders.useQuery();
+  const clickStatsQuery = trpc.store.admin.clickStats.useQuery();
+  const orders = ordersQuery.data ?? [];
+  const awaiting = orders.filter((order) => order.status === "awaiting_confirmation");
+  const pending = orders.filter((order) => order.status === "pending" || order.status === "card_declined");
+  const revenue = orders
+    .filter((order) => order.status === "paid" || order.status === "shipped")
+    .reduce((total, order) => total + order.total, 0);
+
+  const metrics = [
+    { label: "Pedidos recebidos", value: String(orders.length), description: "Todos os pedidos" },
+    { label: "Aguardando pagamento", value: String(pending.length), description: "Cobrar via WhatsApp" },
+    { label: "Avisos para conferir", value: String(awaiting.length), description: "Cliente informou pagamento" },
+    { label: "Receita confirmada", value: brl(revenue), description: "Pagos e enviados" },
+  ];
+
+  return (
+    <section className="rounded-2xl bg-white p-5 lg:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-rd-action">Central de operações</p>
+          <h2 className="mt-1 text-[20px] font-bold text-rd-ink">Resumo da sua loja</h2>
+          <p className="mt-1 text-[13px] text-rd-body">Comece pelos pagamentos pendentes e pelos avisos de clientes.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigate("orders")}
+          className="rd-press rounded-full bg-rd-action px-4 py-2 text-[13px] font-bold text-white hover:bg-rd-dark">
+          Abrir pedidos
+        </button>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="rounded-xl border border-rd-line bg-rd-bg p-3.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-rd-mute">{metric.label}</p>
+            <p className="mt-1 text-[20px] font-bold text-rd-ink">{metric.value}</p>
+            <p className="mt-1 text-[11.5px] text-rd-body">{metric.description}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 grid gap-3 lg:grid-cols-2">
+        <div className={`rounded-xl border p-4 ${awaiting.length > 0 ? "border-violet-200 bg-violet-50" : "border-rd-line bg-rd-bg"}`}>
+          <div className="flex items-center gap-2 text-rd-ink">
+            <BellRing size={16} className={awaiting.length > 0 ? "text-violet-700" : "text-rd-mute"} />
+            <h3 className="text-[14px] font-bold">Conferência de pagamento</h3>
+          </div>
+          <p className="mt-1 text-[13px] text-rd-body">
+            {awaiting.length > 0
+              ? `${awaiting.length} ${awaiting.length === 1 ? "cliente informou pagamento" : "clientes informaram pagamento"}. Confira no banco antes de confirmar.`
+              : "Nenhum pagamento informado aguardando sua conferência."}
+          </p>
+          <button type="button" onClick={() => onNavigate("orders")} className="mt-3 text-[13px] font-bold text-rd-action hover:underline">
+            Ver pedidos e pagamentos
+          </button>
+        </div>
+        <div className="rounded-xl border border-rd-line bg-rd-bg p-4">
+          <div className="flex items-center gap-2 text-rd-ink">
+            <LineChart size={16} className="text-rd-action" />
+            <h3 className="text-[14px] font-bold">Atividade no site</h3>
+          </div>
+          <p className="mt-1 text-[13px] text-rd-body">
+            {clickStatsQuery.data?.totalClicks ?? 0} clique{(clickStatsQuery.data?.totalClicks ?? 0) === 1 ? "" : "s"} registrados em {clickStatsQuery.data?.pages.length ?? 0} página{(clickStatsQuery.data?.pages.length ?? 0) === 1 ? "" : "s"}.
+          </p>
+          <button type="button" onClick={() => onNavigate("analytics")} className="mt-3 text-[13px] font-bold text-rd-action hover:underline">
+            Abrir análises de cliques
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ClickStatsCard() {
   const statsQuery = trpc.store.admin.clickStats.useQuery(undefined, {
     refetchInterval: 15000,
@@ -254,7 +340,7 @@ function ClickStatsCard() {
   );
 }
 
-function PixSettingsCard() {
+function PixSettingsCard({ area }: { area: "payments" | "marketing" }) {
   const utils = trpc.useUtils();
   const settingsQuery = trpc.store.admin.settings.useQuery();
   const [hasMetaCapiToken, setHasMetaCapiToken] = useState(false);
@@ -335,14 +421,19 @@ function PixSettingsCard() {
   return (
     <section className="rounded-2xl bg-white p-5 lg:p-6">
       <div className="flex items-center gap-2">
-        <KeyRound size={18} className="text-rd-action" />
-        <h2 className="text-[16px] font-bold text-rd-ink">Chave Pix</h2>
+        {area === "payments" ? <KeyRound size={18} className="text-rd-action" /> : <LineChart size={18} className="text-rd-action" />}
+        <h2 className="text-[16px] font-bold text-rd-ink">
+          {area === "payments" ? "Pix e regras da loja" : "Marketing e conversões"}
+        </h2>
       </div>
       <p className="mt-1 text-[13px] text-rd-body">
-        O QR Code e o código copia-e-cola do checkout são gerados a partir destes
-        dados.
+        {area === "payments"
+          ? "Defina como o checkout recebe pagamentos e proteja a loja contra pedidos repetidos."
+          : "Concentre os pixels e as conversões em um único local, sem precisar editar código."}
       </p>
 
+      {area === "payments" && (
+        <>
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="block sm:col-span-2">
           <span className="mb-1 block text-[13px] font-semibold text-rd-body">
@@ -472,9 +563,12 @@ function PixSettingsCard() {
           </label>
         </div>
       </div>
+        </>
+      )}
 
-      {/* Pixels e tags de conversão -------------------------------------- */}
-      <div className="mt-5 rounded-2xl border border-rd-line2 p-4">
+      {area === "marketing" && (
+        <>
+      <div className="mt-4 rounded-2xl border border-rd-line2 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <LineChart size={16} className="text-rd-action" />
@@ -663,19 +757,21 @@ function PixSettingsCard() {
           </label>
         </div>
       </div>
+        </>
+      )}
 
       <button
         onClick={submit}
         disabled={save.isPending || settingsQuery.isLoading}
         className="rd-press mt-5 inline-flex items-center gap-2 rounded-full bg-rd-action px-6 py-2.5 text-[14px] font-bold text-white hover:bg-rd-dark disabled:opacity-70">
         {save.isPending && <Loader2 size={15} className="animate-spin" />}
-        Salvar configurações
+        {area === "payments" ? "Salvar Pix e regras" : "Salvar rastreamento"}
       </button>
 
       <p className="mt-3 text-[12px] text-rd-mute">
-        O Pix gerado é um BR Code válido no padrão do Banco Central. A baixa do
-        pagamento não é automática: confirme o recebimento no seu banco e marque
-        o pedido como pago.
+        {area === "payments"
+          ? "A baixa do pagamento não é automática: confirme o recebimento no seu banco e marque o pedido como pago."
+          : "As configurações são aplicadas no site após salvar. O token da Conversions API permanece protegido no servidor."}
       </p>
     </section>
   );
@@ -1203,6 +1299,8 @@ function OrdersTableInner() {
 
 export default function Admin() {
   const { user } = useAuth();
+  const [activeArea, setActiveArea] = useState<AdminArea>("overview");
+  const currentArea = ADMIN_AREAS.find((area) => area.id === activeArea) ?? ADMIN_AREAS[0];
 
   return (
     <div className="min-h-screen bg-rd-bg">
@@ -1214,19 +1312,50 @@ export default function Admin() {
               Painel da loja
             </span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[13px] text-rd-body">
-              Administrador
-            </span>
-          </div>
+          <span className="text-[13px] text-rd-body">Administrador</span>
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-[1366px] flex-col gap-6 px-4 py-6 lg:px-6">
-        <ClickStatsCard />
-        <PixSettingsCard />
-        <StockCard />
-        <OrdersTable />
+      <main className="mx-auto w-full max-w-[1366px] px-4 py-5 lg:px-6 lg:py-6">
+        <div className="rounded-2xl border border-rd-line bg-white p-3 shadow-sm">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {ADMIN_AREAS.map((area) => {
+              const isActive = activeArea === area.id;
+              return (
+                <button
+                  key={area.id}
+                  type="button"
+                  onClick={() => setActiveArea(area.id)}
+                  className={`rd-press shrink-0 rounded-xl px-3.5 py-2 text-left transition ${
+                    isActive
+                      ? "bg-rd-action text-white shadow-sm"
+                      : "text-rd-body hover:bg-rd-bg hover:text-rd-ink"
+                  }`}
+                  aria-current={isActive ? "page" : undefined}>
+                  <span className="block text-[13px] font-bold">{area.label}</span>
+                  <span className={`mt-0.5 block text-[10.5px] ${isActive ? "text-white/80" : "text-rd-mute"}`}>{area.description}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-rd-action">Painel administrativo</p>
+            <h1 className="mt-1 text-[22px] font-bold text-rd-ink">{currentArea.label}</h1>
+          </div>
+          <p className="hidden text-right text-[12px] text-rd-body sm:block">{currentArea.description}</p>
+        </div>
+
+        <div className="mt-5">
+          {activeArea === "overview" && <OverviewCard onNavigate={setActiveArea} />}
+          {activeArea === "orders" && <OrdersTable />}
+          {activeArea === "stock" && <StockCard />}
+          {activeArea === "payments" && <PixSettingsCard area="payments" />}
+          {activeArea === "marketing" && <PixSettingsCard area="marketing" />}
+          {activeArea === "analytics" && <ClickStatsCard />}
+        </div>
       </main>
     </div>
   );
